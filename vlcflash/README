@@ -1,0 +1,12 @@
+opens flash videos that are open in the browser in vlc, 
+this means that I dont have to use the buggy choppy flash plugin in the browser
+
+to use:
+
+	1. open the video in the browser 
+	2. pause it and 
+	3. run the script
+
+result:
+vlc pops up with the video
+	

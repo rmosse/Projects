@@ -1,0 +1,6 @@
+Keeps an eye on broadband useage and texts you when its approaching the limit
+
+note:
+	depends on a program called txt,
+	this is not publicly available but the script
+	could be easily modified to use meteorsms or something similar
