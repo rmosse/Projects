@@ -3,6 +3,7 @@ import xmlrpclib
 import math
 import random
 import base64
+import time
 from Crypto.Cipher import ARC4
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 
@@ -13,17 +14,21 @@ class Authserver:
 		self.dserv =  {}
 		self.fservs = {}
 		self.users = {}
-		self.readinusers()	
+		self.readinusers()
+		#map of serverids, to passwords for quick encrption of tickets and tokens
+		self.serverpasswds = {}	
+
 		#setup server	
 		server = SimpleXMLRPCServer((host,  port))
 		server.register_multicall_functions()
 		#register functions
 		server.register_function(self.registerDirServer , "registerDirServer")
-		server.register_function(self.registerDirServer , "registerDirServer")
-
+		server.register_function(self.registerFileServer , "registerFileServer")
+		server.register_function(self.authenticateUser , "authenticateUser")
 		#fire up
 		server.serve_forever()	
 
+	#reads in the database of usernames and passwords from disk
 	def readinusers(self):
 		#read in userdbs
 		fd = open('dservdb.dat','r')
@@ -31,80 +36,72 @@ class Authserver:
 		fu = open('userdb.dat','r')		
 		#dict for dirservers	
 		dserv = fd.read()
-		self.dserv[dserv.split(':')[0]] = dserv.split(':')[1]
+		self.dserv[dserv.split(':')[0]] = dserv.split(':')[1][:-1]
 		#dict for fileservers
 		for serv in ff:
-			self.fservs[serv.split(':')[0]] = serv.split(':')[1]
+			self.fservs[serv.split(':')[0]] = serv.split(':')[1][:-1]
 		#dict for users
 		for user in fu:
-			self.users[serv.split(':')[0]] = serv.split(':')[1]
-
-		
-			
-
+			self.users[user.split(':')[0]] = user.split(':')[1:][:-1]
 
 	#registers the dirserver and gets it details for later reference
 	def registerDirServer(self, username, host, port):
 			self.dirhost = host
 			self.dirport = port	
 			self.dirserverid = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))		
-			token = self.encryptDSToken(username, self.dirserverid)	
-			print token	
+			#save a map of sid to passwd for quick futer encryption
+			self.serverpasswds[str(self.dirserverid)] = self.dserv[username]
+			#encrypt token			
+			token = self.encryptServerToken(self.dirserverid, self.dirserverid)	
 			return token
-
-	
 		
 	#responds to fileserver with dirserver token
 	def registerFileServer(self, username):
 			serverid = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))		
 			sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))		
-						
-
-
-			#return token for dirserver (encrypted with key derived from password)()
-			return 'fstoken'				
+			#save a map of sid to serverpasswd
+			self.serverpasswds[str(serverid)] = self.fservs[username]
+			#ticket			
+			ticket = self.encryptTicket(sessionkey, self.dirserverid)
+			#token
+			response = ticket, str(sessionkey), str(self.dirserverid), str(time.time()), str(serverid), str(self.dirhost), str(self.dirport)
+			response = ' '.join(response)
+			response = self.encryptServerToken(response, serverid)		
+			return response				
 	
-	#local getter function
-	def getDirServerToken(self,username, serverid):
-			#return token for server (encrypted with key derived from password)
-			return 'usertoken'
+	#Authenticate a user
+	def authenticateUser(self, username, serverid):
+		if serverid == '0':
+			serverid = self.dirserverid
+		sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))	
+		ticket = self.encryptTicket(sessionkey, str(serverid))
+		response = ticket, str(sessionkey), str(serverid), str(time.time())
+		response = self.encryptUserToken(response, username)
+		return response
 
-	
-	def makefstoken(self,username):
-	#token
-		#ticket			
-		#sessionkey
-		#dirserverid
-		#timestamp
-		#It's own sid			
-		#dirserver host, port
-		
-	#ticket #encrypted with key derived from dirserverpassword
-		#sessionkey			
-		return 'fstoken'			
-
-	def makeuserToken(self,username, serverid):
-	#token
-		#ticket			
-		#sessionkey
-		#serverid
-		#timestamp			
-		registerDirServer('dserv', host , port)
-	#ticket #encrypted with key derived from dirserverpassword
-		#sessionkey
-		return 'usertoken'
-
-	def getDirServerId(self):
-		#private not to be sent over network
-		return self.dirserverid
-
-	#encrpts a token with key derived from the client password
-	def encryptDSToken(self, username, token):
-		passwd = self.dserv[username]
+	#encrpts a token with key derived from the server password
+	def encryptServerToken(self, token, serverid):
+		passwd = self.serverpasswds[str(serverid)]
 		encryptor = ARC4.new(str(passwd))
-		return base64.encodestring(encryptor.encrypt(str(token)))
-			
+		token = encryptor.encrypt(str(token))
+		token = base64.encodestring(token)
+		return token	
+	
+	#encrpts a token with key derived from the user password
+	def encryptUserToken(self, token, username):
+		passwd = self.users[username]
+		encryptor = ARC4.new(str(passwd))
+		token = encryptor.encrypt(str(token))
+		token = base64.encodestring(token)
+		return token
 
-
+	#encrypts ticket
+	def encryptTicket(self, ticket, destserverid):
+		passwd = self.serverpasswds[str(destserverid)]
+		encryptor = ARC4.new(str(passwd))
+		ticket = encryptor.encrypt(str(ticket))
+		ticket = base64.encodestring(ticket)
+		return ticket
 
 authserver = Authserver('localhost', 10000)
+authserver.registerFileServer(self, 'fserv')
