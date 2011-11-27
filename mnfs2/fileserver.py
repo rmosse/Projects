@@ -30,10 +30,14 @@ class Fileserver:
 		ticket, sessionkey, self.dirserverid, timestamp, self.serverid, dirhost, dirport = token.split()
 		#register with dirserver
 		dirproxy = xmlrpclib.ServerProxy('http://'+dirhost+':'+str(dirport)+'/')
-		dirproxy.registerFileServer(ticket, self.encryptmsg(host, sessionkey), self.encryptmsg(port, sessionkey),self.encryptmsg(self.serverid, sessionkey) , self.encryptmsg(self.getfolders(), sessionkey))
-		#fire up		
-		server.serve_forever()
-
+		confirmation = dirproxy.registerFileServer(ticket, self.encryptmsg(host, sessionkey), self.encryptmsg(port, sessionkey),self.encryptmsg(self.serverid, sessionkey) , self.encryptmsg(self.getfolders(), sessionkey))
+		confirmation = self.decryptmsg(confirmation, sessionkey)
+		#make sure you know who your talking to
+		if timestamp == confirmation:
+			#fire up		
+			server.serve_forever()
+		else:
+			print 'rougue server'
 	
 #various encryption functions
 
@@ -73,7 +77,7 @@ class Fileserver:
 			path = self.decryptmsg(path, sessionkey)
 			try:
 				f = open(self.rootdir+path,'r')
-				return base64.encodestring(self.encryptmsg(f.read(), sessionkey)) # needs to return time stamp for validation
+				return self.encryptmsg(f.read(), sessionkey), self.encryptmsg(timestamp, sessionkey)
 			except:
 				raise IOError('[Errno 2] No such file or directory: '+path)
 		return 1
@@ -131,7 +135,8 @@ class Fileserver:
 
 	# validates timestamps
 	def validate(self, timestamp):
-		if float(timestamp) <= float(time.time()):
+		print float(timestamp), float(time.time())
+		if float(timestamp) >= float(time.time()):
 			return True
 		return False
 	#helper function to create new directories when necessary

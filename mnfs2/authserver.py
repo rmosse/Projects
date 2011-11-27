@@ -63,7 +63,7 @@ class Authserver:
 			#save a map of sid to serverpasswd
 			self.serverpasswds[str(serverid)] = self.fservs[username]
 			#generate timestamp
-			timestamp = str(time.time())
+			timestamp = str(time.time()+20)
 			#ticket			
 			ticket = [str(sessionkey), timestamp]
 			ticket = self.encryptTicket(' '.join(ticket), str(self.dirserverid))
@@ -81,10 +81,10 @@ class Authserver:
 			serverid = self.dirserverid
 		sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))
 		#generate timestamp
-		timestamp = str(time.time())	
+		timestamp = str(time.time()+20)	
 		ticket = [str(sessionkey) , timestamp]
 		ticket = self.encryptTicket(' '.join(ticket),str(serverid))
-		response = str(ticket), str(sessionkey), str(serverid), str(time.time())
+		response = str(ticket), str(sessionkey), str(serverid), timestamp
 		response = self.encryptUserToken(' '.join(response), username)
 		if axe == True:
 			return response

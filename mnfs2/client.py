@@ -29,9 +29,12 @@ class mnfs:
 		ticket, sessionkey, serverid2, timestamp = self.decryptToken(enctoken)
 		#make request to fileserver
 		fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
-		data = fsproxy.read(ticket, self.encryptmsg(filen, sessionkey)) 
-		return self.decryptmsg(base64.decodestring(data),sessionkey)
-
+		data , ts = fsproxy.read(ticket, self.encryptmsg(filen, sessionkey)) 
+		if (self.decryptmsg(ts ,sessionkey) == timestamp):
+			return self.decryptmsg(data,sessionkey)
+		else:
+			print self.decryptmsg(ts ,sessionkey), timestamp
+			raise IOError('rogue agent')			
 
 
 
