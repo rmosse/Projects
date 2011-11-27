@@ -1,10 +1,13 @@
 import xmlrpclib
 import socket
 import base64
+import random
+import math
 from Crypto.Cipher import ARC4
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 
 class Dirserver:
+#setup
 	
 	def __init__(self, authhost, authport, passwd):
 		#dictionary of all known files
@@ -14,6 +17,7 @@ class Dirserver:
 		server = SimpleXMLRPCServer(('', 0))
 		server.register_multicall_functions()
 		server.register_function(self.registerFileServer , "registerFileServer")
+		server.register_function(self.getlocation , "getlocation")
 		host = socket.getfqdn()		
 		port = server.socket.getsockname()[1]
 		print host, port
@@ -25,15 +29,42 @@ class Dirserver:
 		#fire up		
 		server.serve_forever()
 
-	def registerFileServer(self, ticket, enchost, encport, encsid, encfilelist):
-		sessionkey =  self.decryptTicket(ticket)
-		host =  self.decryptmsg(enchost, sessionkey)
-		port =  self.decryptmsg(encport, sessionkey)
-		serverid =  self.decryptmsg(encsid, sessionkey)
-		filelist =  self.decryptmsg(encfilelist, sessionkey)
-		self.incorporate(filelist.split(), host, port, serverid)
 
-		return 'registered'
+#server actions
+
+	#adds info about fileservers who join the network
+	def registerFileServer(self, ticket, enchost, encport, encsid, encfilelist):
+		sessionkey =  self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		if self.validate(timestamp):
+			host =  self.decryptmsg(enchost, sessionkey)
+			port =  self.decryptmsg(encport, sessionkey)
+			serverid =  self.decryptmsg(encsid, sessionkey)
+			filelist =  self.decryptmsg(encfilelist, sessionkey)
+			self.incorporate(filelist.split(), host, port, serverid)
+			return 0 #should also return a timestamp here to be validated
+			print 'fixme'
+		else: return 1	
+	
+
+	#handles file location requests from clients
+	def getlocation(self, ticket, path):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			try:
+				hosts = self.maindict[path[:path.rfind('/')]]
+				rindex = int(math.floor(random.uniform(1,len(hosts))))
+				return True , self.encryptmsg(hosts[rindex], sessionkey) # TODO True should be encrypted also need to return timestamp to be validated
+				print 'fixme'
+			except:
+				return False, 'none'
+
+		return 1
+
+#various encryption functions
+
 	#decrypts token recieved from Authserver 
 	def decryptDSToken(self, token):
 		token = base64.decodestring(token)
@@ -51,6 +82,23 @@ class Dirserver:
 		message = base64.decodestring(message)
 		decryptor = ARC4.new(str(sessionkey))
 		return decryptor.decrypt(message)
+		
+	#encrypts messages to be sent privately with session key
+	def encryptmsg(self, message, sessionkey):
+		encryptor = ARC4.new(str(sessionkey))
+		message = encryptor.encrypt(str(message))
+		message = base64.encodestring(message)
+		return message
+
+#various helper functions	
+	
+	# validates timestamps
+	def validate(self, timestamp):
+		if int(timestamp) <= int(time.time):
+			return True
+		return False
+
+
 
 	# incorporates the directory list of a new fileserver in to a global hashmap of directories to a list 
 	# of servers containing them.
@@ -79,5 +127,5 @@ class Dirserver:
 	 		if (str(root))[len(self.rootdir):] != '':
 		 		self.folders.append((str(root))[len(self.rootdir):])
 	 	return ' '.join(self.folders)	
-	
+
 serv = Dirserver('localhost', 10000, 'dspassword')

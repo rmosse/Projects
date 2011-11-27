@@ -8,7 +8,8 @@ from Crypto.Cipher import ARC4
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 
 class Authserver:
-	
+
+#setup functions
 	def __init__(self, host, port):
 		#read in a db of users, fileservers, and the dirserver usernames and passwords		
 		self.dserv =  {}
@@ -42,8 +43,8 @@ class Authserver:
 			self.fservs[serv.split(':')[0]] = serv.split(':')[1][:-1]
 		#dict for users
 		for user in fu:
-			self.users[user.split(':')[0]] = user.split(':')[1:][:-1]
-
+			self.users[user.split(':')[0]] = user.split(':')[1][:-1]
+#server Actions
 	#registers the dirserver and gets it details for later reference
 	def registerDirServer(self, username, host, port):
 			self.dirhost = host
@@ -61,23 +62,37 @@ class Authserver:
 			sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))		
 			#save a map of sid to serverpasswd
 			self.serverpasswds[str(serverid)] = self.fservs[username]
+			#generate timestamp
+			timestamp = str(time.time())
 			#ticket			
-			ticket = self.encryptTicket(sessionkey, self.dirserverid)
+			ticket = [self.dirserverid, timestamp]
+			ticket = self.encryptTicket(sessionkey, ' '.join(ticket))
 			#token
-			response = ticket, str(sessionkey), str(self.dirserverid), str(time.time()), str(serverid), str(self.dirhost), str(self.dirport)
+			response = ticket, str(sessionkey), str(self.dirserverid), timestamp, str(serverid), str(self.dirhost), str(self.dirport)
 			response = ' '.join(response)
 			response = self.encryptServerToken(response, serverid)		
 			return response				
 	
 	#Authenticate a user
 	def authenticateUser(self, username, serverid):
+		axe = True
 		if serverid == '0':
+			axe = False
 			serverid = self.dirserverid
-		sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))	
-		ticket = self.encryptTicket(sessionkey, str(serverid))
-		response = ticket, str(sessionkey), str(serverid), str(time.time())
-		response = self.encryptUserToken(response, username)
-		return response
+		sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))
+		#generate timestamp
+		timestamp = str(time.time())	
+		ticket = [str(serverid) ,timestamp]
+		ticket = self.encryptTicket(sessionkey, ' '.join(ticket))
+		response = str(ticket), str(sessionkey), str(serverid), str(time.time())
+		response = self.encryptUserToken(' '.join(response), username)
+		if axe == True:
+			return response
+		else:
+			return response, self.dirhost, self.dirport
+
+
+#helper encryption functions
 
 	#encrpts a token with key derived from the server password
 	def encryptServerToken(self, token, serverid):
@@ -101,7 +116,7 @@ class Authserver:
 		encryptor = ARC4.new(str(passwd))
 		ticket = encryptor.encrypt(str(ticket))
 		ticket = base64.encodestring(ticket)
-		return ticket
+		return ticket[:-1]
 
 authserver = Authserver('localhost', 10000)
 authserver.registerFileServer(self, 'fserv')
