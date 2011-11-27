@@ -14,11 +14,13 @@ class Dirserver:
 		#dictionary of all known files
 		self.maindict = {}
 		self.passwd = passwd
+		self.modified = {}
 		#setup server		
 		server = SimpleXMLRPCServer(('', 0))
 		server.register_multicall_functions()
 		server.register_function(self.registerFileServer , "registerFileServer")
 		server.register_function(self.getlocation , "getlocation")
+		server.register_function(self.lastModified , "lastModified")
 		host = socket.getfqdn()		
 		port = server.socket.getsockname()[1]
 		print host, port
@@ -57,11 +59,24 @@ class Dirserver:
 			try:
 				hosts = self.maindict[path[:path.rfind('/')]]
 				rindex = int(math.floor(random.uniform(1,len(hosts))))
+				self.modified[path] = str(time.time())
 				return self.encryptmsg('True', sessionkey) , self.encryptmsg(timestamp, sessionkey), self.encryptmsg(hosts[rindex], sessionkey) 
 			except:
 				pass
 		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
-
+	
+	#find last time a file was modified
+	def lastModified(self, ticket, path):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			try:
+				return self.encryptmsg('True', sessionkey) , self.encryptmsg(timestamp, sessionkey), self.encryptmsg(self.modified[path], sessionkey) 
+			except:
+				pass
+		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
+	
 #various encryption functions
 
 	#decrypts token recieved from Authserver 

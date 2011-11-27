@@ -136,7 +136,6 @@ class Fileserver:
 
 	# validates timestamps
 	def validate(self, timestamp):
-		print float(timestamp), float(time.time())
 		if float(timestamp) >= float(time.time()):
 			return True
 		return False
