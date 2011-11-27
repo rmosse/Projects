@@ -65,8 +65,8 @@ class Authserver:
 			#generate timestamp
 			timestamp = str(time.time())
 			#ticket			
-			ticket = [self.dirserverid, timestamp]
-			ticket = self.encryptTicket(sessionkey, ' '.join(ticket))
+			ticket = [str(sessionkey), timestamp]
+			ticket = self.encryptTicket(' '.join(ticket), str(self.dirserverid))
 			#token
 			response = ticket, str(sessionkey), str(self.dirserverid), timestamp, str(serverid), str(self.dirhost), str(self.dirport)
 			response = ' '.join(response)
@@ -82,8 +82,8 @@ class Authserver:
 		sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))
 		#generate timestamp
 		timestamp = str(time.time())	
-		ticket = [str(serverid) ,timestamp]
-		ticket = self.encryptTicket(sessionkey, ' '.join(ticket))
+		ticket = [str(sessionkey) , timestamp]
+		ticket = self.encryptTicket(' '.join(ticket),str(serverid))
 		response = str(ticket), str(sessionkey), str(serverid), str(time.time())
 		response = self.encryptUserToken(' '.join(response), username)
 		if axe == True:

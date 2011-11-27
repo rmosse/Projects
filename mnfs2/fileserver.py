@@ -2,6 +2,7 @@ import xmlrpclib
 import socket
 import base64
 import os
+import time
 from Crypto.Cipher import ARC4
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 
@@ -130,7 +131,7 @@ class Fileserver:
 
 	# validates timestamps
 	def validate(self, timestamp):
-		if int(timestamp) <= int(time.time):
+		if float(timestamp) <= float(time.time()):
 			return True
 		return False
 	#helper function to create new directories when necessary

@@ -3,6 +3,7 @@ import socket
 import base64
 import random
 import math
+import time
 from Crypto.Cipher import ARC4
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 
@@ -60,7 +61,7 @@ class Dirserver:
 				print 'fixme'
 			except:
 				return False, 'none'
-
+		print 'error'
 		return 1
 
 #various encryption functions
@@ -94,7 +95,7 @@ class Dirserver:
 	
 	# validates timestamps
 	def validate(self, timestamp):
-		if int(timestamp) <= int(time.time):
+		if float(timestamp) <= float(time.time()):
 			return True
 		return False
 
