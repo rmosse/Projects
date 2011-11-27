@@ -6,6 +6,9 @@ import math
 import time
 from Crypto.Cipher import ARC4
 from SimpleXMLRPCServer import SimpleXMLRPCServer
+from threading import Lock
+
+mutex = Lock()
 
 class Dirserver:
 #setup
@@ -15,12 +18,16 @@ class Dirserver:
 		self.maindict = {}
 		self.passwd = passwd
 		self.modified = {}
+		self.locked = {}
 		#setup server		
 		server = SimpleXMLRPCServer(('', 0))
 		server.register_multicall_functions()
 		server.register_function(self.registerFileServer , "registerFileServer")
 		server.register_function(self.getlocation , "getlocation")
-		server.register_function(self.lastModified , "lastModified")
+		server.register_function(self.lock , "lock")
+		server.register_function(self.unlock , "unlock")
+		server.register_function(self.setModified , "setModified")
+
 		host = socket.getfqdn()		
 		port = server.socket.getsockname()[1]
 		print host, port
@@ -29,7 +36,8 @@ class Dirserver:
 		authproxy = xmlrpclib.ServerProxy('http://'+authhost+':'+str(authport)+'/')
 		token = authproxy.registerDirServer('dserv', host , port)
 		self.serverid = self.decryptDSToken(token)
-		#fire up		
+		#fire up
+			
 		server.serve_forever()
 
 
@@ -65,6 +73,62 @@ class Dirserver:
 				pass
 		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
 	
+	
+	#Assigns a lock only for valid requests (it checks if the file has been modified since since the callers replica was)
+	def lock(self, ticket, path, ltype, modified):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			ltype = self.decryptmsg(ltype, sessionkey)
+			modified = self.decryptmsg(modified, sessionkey)
+			#check if in modified files list fix it if not
+			try:
+				a = self.modified[path]
+			except:
+				self.modified[path] = str(time.time())			
+			#check if caller cache is up to date
+			if modified == self.modified[path]:
+				#wait if locked
+				if path in locked:	
+					#Aquire lock
+					Axe = True
+					while Axe:		
+						mutex.acquire()
+						if self.locked[path] == True:
+							mutex.release()
+							time.sleep(1)
+						else:
+							#lock
+							self.locked[path] = True	
+							#update last modification time
+							if ltype == 'write':			
+								ts = self.setModified(path)
+							#break loop
+							Axe = False
+							#return result to caller
+							return self.encryptmsg('True' ,sessionkey), self.encryptmsg(ts ,sessionkey)
+				#if not locked then proceed				
+				else:
+					#lock it
+					mutex.acquire()
+					self.locked[path] = True
+					#update last modification date	
+					if ltype == 'write':			
+						ts = self.setModified(path)
+					#return result to caller
+					return self.encryptmsg('True' ,sessionkey), self.encryptmsg(ts ,sessionkey)
+					mutex.release()
+			#fail (catch all)
+			return self.encryptmsg('False' , sessionkey), self.encryptmsg('None', sessionkey)
+				
+
+
+	def unlock(self, path):
+		mutex.acquire()
+		self.locked[path] = False
+		mutex.release()
+
 	#find last time a file was modified
 	def lastModified(self, ticket, path):
 		sessionkey = self.decryptTicket(ticket).split(' ')[0]
@@ -77,6 +141,14 @@ class Dirserver:
 				pass
 		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
 	
+	def lock(self, path):
+		mutex.acquire()
+		mutex.release()
+
+	def unlock(self, path):
+		mutex.acquire()
+		mutex.release()
+
 #various encryption functions
 
 	#decrypts token recieved from Authserver 
@@ -112,7 +184,12 @@ class Dirserver:
 			return True
 		return False
 
-
+	#updates file timestamps so clients can validate local cached copies and replicas can be validated
+	def setModified(self, path):
+		stamp = str(time.time())
+		self.modified[path] = str(time.time(stamp))
+		return stamp
+	
 
 	# incorporates the directory list of a new fileserver in to a global hashmap of directories to a list 
 	# of servers containing them.

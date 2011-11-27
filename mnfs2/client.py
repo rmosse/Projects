@@ -149,6 +149,8 @@ class mnfs:
 			return True
 		return False
 
+	
+
 fs = mnfs('user','password' ,'localhost', '10000')
 print fs.read('/folder1/file1')
 print fs.read('/folder1/file1')

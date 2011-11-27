@@ -3,6 +3,7 @@ import socket
 import base64
 import os
 import time
+import sys
 from Crypto.Cipher import ARC4
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 
@@ -157,4 +158,4 @@ class Fileserver:
 		print ' '.join(self.folders)
 	 	return ' '.join(self.folders)	
 
-serv = Fileserver('localhost', 10000, 'fserv', 'fspassword', 'fsroot1')
+serv = Fileserver('localhost', 10000, 'fserv', 'fspassword', sys.argv[1])
