@@ -19,9 +19,13 @@ class mnfs:
 		ticket, self.dssessionkey, serverid, timestamp = self.decryptToken(enctoken)
 		#make request to dirserver
 		dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
-		success, response = dirproxy.getlocation(ticket, self.encryptmsg(filen, self.dssessionkey)) 
-		if success:
-			fshost, fsport, serverid = self.decryptmsg(response, self.dssessionkey).split(':')
+		success, ts, response = dirproxy.getlocation(ticket, self.encryptmsg(filen, self.dssessionkey)) 
+		if (self.decryptmsg(success , self.dssessionkey)) == 'True':
+			#check timestamp	
+			if self.decryptmsg(ts , self.dssessionkey) == timestamp:
+				fshost, fsport, serverid = self.decryptmsg(response, self.dssessionkey).split(':')
+			else:
+				print 'error rogue agent'
 		else:
 			raise IOError('[Errno 2] No such file or directory: '+filen)
 		#get ticket for fileserver

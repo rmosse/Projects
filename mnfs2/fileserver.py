@@ -30,12 +30,16 @@ class Fileserver:
 		ticket, sessionkey, self.dirserverid, timestamp, self.serverid, dirhost, dirport = token.split()
 		#register with dirserver
 		dirproxy = xmlrpclib.ServerProxy('http://'+dirhost+':'+str(dirport)+'/')
-		confirmation = dirproxy.registerFileServer(ticket, self.encryptmsg(host, sessionkey), self.encryptmsg(port, sessionkey),self.encryptmsg(self.serverid, sessionkey) , self.encryptmsg(self.getfolders(), sessionkey))
-		confirmation = self.decryptmsg(confirmation, sessionkey)
+		ts, success = dirproxy.registerFileServer(ticket, self.encryptmsg(host, sessionkey), self.encryptmsg(port, sessionkey),self.encryptmsg(self.serverid, sessionkey) , self.encryptmsg(self.getfolders(), sessionkey))
+		ts = self.decryptmsg(ts, sessionkey)
+		success = self.decryptmsg(success, sessionkey)
 		#make sure you know who your talking to
-		if timestamp == confirmation:
-			#fire up		
-			server.serve_forever()
+		if timestamp == ts:
+			if success == 'True':
+				#fire up		
+				server.serve_forever()
+			else:
+				print 'registration failed'
 		else:
 			print 'rougue server'
 	
@@ -80,7 +84,7 @@ class Fileserver:
 				return self.encryptmsg(f.read(), sessionkey), self.encryptmsg(timestamp, sessionkey)
 			except:
 				raise IOError('[Errno 2] No such file or directory: '+path)
-		return 1
+		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 	#write a file to disk
 	def write(self, ticket, path, data):
@@ -93,11 +97,10 @@ class Fileserver:
 				self.ensure_dir(path)
 				f = open(self.rootdir+path,'w')
 				f.write(data)
-				return 0 #encrypt also needs to return time stamp for validation
+				return self.encryptmsg(True, sessionkey), self.encryptmsg(timestamp, sessionkey)
 			except:
 				raise IOError('write error'+path)
-
-		return 1 #encrypt also needs to return time stamp for validation
+		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 	#append to a file and write to disk
 	def append(self, ticket, path, data):
@@ -110,10 +113,10 @@ class Fileserver:
 				self.ensure_dir(path)
 				f = open(self.rootdir+path,'a')
 				f.write(data)
-				return 0 #encrypt also needs to return time stamp for validation
+				return	self.encryptmsg(True, sessionkey), self.encryptmsg(timestamp, sessionkey)
 			except:
 				raise IOError('[Errno 2] No such file or directory: '+path)
-		return 1 #encrypt also needs to return time stamp for validation
+		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 	#delete a file on disk
 	def delete(self, ticket, path):
@@ -123,12 +126,10 @@ class Fileserver:
 			path = self.decryptmsg(path, sessionkey)
 			try:
 				os.remove((str(self.rootdir))+path)			
-				return 0 #encrypt also needs to return time stamp for validation
+				return self.encryptmsg(True, sessionkey), self.encryptmsg(timestamp, sessionkey)
 			except:
 				raise IOError('[Errno 2] No such file or directory: '+path)
-
-		return 1 #encrypt also needs to return time stamp for validation
-
+		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
 	
 
 #helper functions

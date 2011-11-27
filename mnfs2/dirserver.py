@@ -43,9 +43,9 @@ class Dirserver:
 			serverid =  self.decryptmsg(encsid, sessionkey)
 			filelist =  self.decryptmsg(encfilelist, sessionkey)
 			self.incorporate(filelist.split(), host, port, serverid)
-			return(self.encryptmsg(timestamp, sessionkey))
+			return(self.encryptmsg(timestamp, sessionkey)), self.encryptmsg('True', sessionkey)
 		else: 
-			return 1	
+			return self.encryptmsg(timestamp, sessionkey), self.encryptmsg('False', sessionkey)	
 	
 
 	#handles file location requests from clients
@@ -57,10 +57,10 @@ class Dirserver:
 			try:
 				hosts = self.maindict[path[:path.rfind('/')]]
 				rindex = int(math.floor(random.uniform(1,len(hosts))))
-				return True , self.encryptmsg(hosts[rindex], sessionkey) # TODO True should be encrypted also need to return timestamp to be validated
+				return self.encryptmsg('True', sessionkey) , self.encryptmsg(timestamp, sessionkey), self.encryptmsg(hosts[rindex], sessionkey) 
 			except:
-				return False, 'none'
-		return 1
+				pass
+		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 #various encryption functions
 
