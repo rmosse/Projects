@@ -2,6 +2,7 @@ import base64
 import time
 import math
 import random
+import os
 import xmlrpclib
 from Crypto.Cipher import ARC4
 
@@ -59,28 +60,72 @@ class mnfs:
 			fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
 			data , ts = fsproxy.read(ticket, self.encryptmsg(filen, sessionkey)) 
 			if (self.decryptmsg(ts ,sessionkey) == timestamp):
+				self.ensure_dir('cache'+filen)
 				self.cachewrite(filen, self.decryptmsg(data,sessionkey))
 				return self.decryptmsg(data,sessionkey)
 			else:
 				print self.decryptmsg(ts ,sessionkey), timestamp
 				raise IOError('rogue agent')			
 
+	def write(self, filen, data):
+		#get ticket for dirserver
+		#check to see if we already have a ticket
+		try:
+			ticket, timestamp = self.tickets[self.dirserverid]
+			assert(self.validate(timestamp))		
+		except:
+			enctoken, self.dirhost, self.dirport = self.authenticate('0')
+			ticket, self.dssessionkey, self.dirserverid, timestamp = self.decryptToken(enctoken)
+			self.tickets[self.dirserverid] = ticket, timestamp
+	
+		#make request to dirserver
+		dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
+		success, ts, response = dirproxy.getlocation(ticket, self.encryptmsg(filen, self.dssessionkey)) 
+		if (self.decryptmsg(success , self.dssessionkey)) == 'True':
+			#check timestamp	
+			if self.decryptmsg(ts , self.dssessionkey) == timestamp:
+				fshost, fsport, serverid = self.decryptmsg(response, self.dssessionkey).split(':')
+			else:
+				print 'error rogue agent'
+		else:
+			raise IOError('[Errno 2] No such file or directory: '+filen)
+	
+		#get ticket for fileserver
+		#check to see if we already have a ticket
+		try:
+			ticket, sessionkey, serverid, timestamp = self.tickets[serverid]
+			assert(self.validate(timestamp))		
+		except:
+			enctoken = self.authenticate(serverid)
+			ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken)
+			self.tickets[serverid] = ticket, sessionkey, serverid, timestamp 
+
+		#make request to fileserver
+		fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
+		success, ts = fsproxy.write(ticket, self.encryptmsg(filen, sessionkey), self.encryptmsg(data, sessionkey)) 
+		if (self.decryptmsg(ts ,sessionkey) == timestamp):
+			self.ensure_dir('cache'+filen)
+			self.cachewrite(filen, self.decryptmsg(data,sessionkey))
+			return self.decryptmsg(data,sessionkey)
+		else:
+			print self.decryptmsg(ts ,sessionkey), timestamp
+			raise IOError('rogue agent')		
+
 #cache functions
 	def cachewrite(self, path, data):
 		ftimestamp = time.time()
-		fileid = str(int(math.floor(random.uniform(100000000000000000, 999999999999999999))))
-		f = open('cache/'+fileid,'w')	
+		f = open('cache'+path,'w')	
 		f.write(data)
 		f.close()
-		self.cache[path] = fileid, ftimestamp
+		self.cache[path] = ftimestamp
 
 	#try and read from the cache
 	def cacheread(self, path):
 		#check to see if we have a cached copy
 		try:
-			fileid, ftimestamp = self.cache[path]
+			ftimestamp = self.cache[path]
 			assert(self.upToDate(path, ftimestamp))
-			f = open('cache/'+fileid,'r')
+			f = open('cache'+fileid,'r')
 			return True, f.read()
 		except:
 			return False, None
@@ -149,7 +194,12 @@ class mnfs:
 			return True
 		return False
 
-	
+	#helper function to create new directories when necessary
+	def ensure_dir(self, f):
+		d = os.path.dirname(f)
+		if not os.path.exists(d):
+        		os.makedirs(d)
+
 
 fs = mnfs('user','password' ,'localhost', '10000')
 print fs.read('/folder1/file1')

@@ -82,10 +82,6 @@ class Dirserver:
 			path = self.decryptmsg(path, sessionkey)
 			modified = self.decryptmsg(modified, sessionkey)
 			#check if in modified files list fix it if not
-			try:
-				a = self.modified[path]
-			except:
-				self.modified[path] = str(time.time())			
 			#check if caller cache is up to date
 			if modified == self.modified[path]:
 				#wait if locked
@@ -199,11 +195,13 @@ class Dirserver:
 			newslist = list(self.maindict[item])
 			newslist.append(host+':'+port+':'+serverid)
 			self.maindict[item] = tuple(newslist)
+			self.modified[item] = str(time.time())	
 			print "fixme remove dead servers"
 				
 		#add new files (gets the diff between the two sets and the adds them to the new ones to the global dictionary)
 		for item in set(self.maindict) ^ set(servlist):
 			self.maindict[item] = ('',host+':'+port+':'+serverid)
+			self.modified[item] = str(time.time())	
 			
 	#compiles a list of folders stored on the file server
 	def getfolders(self):
