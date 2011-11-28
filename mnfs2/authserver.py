@@ -26,6 +26,7 @@ class Authserver:
 		server.register_function(self.registerDirServer , "registerDirServer")
 		server.register_function(self.registerFileServer , "registerFileServer")
 		server.register_function(self.authenticateUser , "authenticateUser")
+		server.register_function(self.authenticateServer , "authenticateServer")
 		#fire up
 		server.serve_forever()	
 
@@ -90,6 +91,24 @@ class Authserver:
 			return response
 		else:
 			return response, self.dirhost, self.dirport
+
+	#Authenticate a server
+	def authenticateServer(self, username, serverid):
+		axe = True
+		if serverid == '0':
+			axe = False
+			serverid = self.dirserverid
+		sessionkey = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))
+		#generate timestamp
+		timestamp = str(time.time()+20)	
+		ticket = [str(sessionkey) , timestamp]
+		ticket = self.encryptTicket(' '.join(ticket),str(serverid))
+		response = str(ticket), str(sessionkey), str(serverid), timestamp
+		response = self.encryptServerToken(' '.join(response), username)
+		if axe == True:
+			return response
+		else:
+			return response
 
 
 #helper encryption functions

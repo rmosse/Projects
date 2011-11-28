@@ -14,9 +14,13 @@ class Fileserver:
 		self.passwd = passwd
 		self.user = user
 		self.rootdir = rootdir
+		self.authhost = authhost 
+		self.authport = str(authport)
+		self.serverid = ' ' 
 		#setup server		
 		server = SimpleXMLRPCServer(('', 0))
 		server.register_function(self.read, "read")
+		server.register_function(self.readopen, "readopen")
 		server.register_function(self.write, "write")
 		server.register_function(self.append, "append")
 		server.register_function(self.delete, "delete")
@@ -28,9 +32,9 @@ class Fileserver:
 		token = authproxy.registerFileServer(user)
 		token = self.decryptToken(token)
 		#extract data
-		ticket, sessionkey, self.dirserverid, timestamp, self.serverid, dirhost, dirport = token.split()
+		ticket, sessionkey, self.dirserverid, timestamp, self.serverid, self.dirhost, self.dirport = token.split()
 		#register with dirserver
-		dirproxy = xmlrpclib.ServerProxy('http://'+dirhost+':'+str(dirport)+'/')
+		dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
 		ts, success = dirproxy.registerFileServer(ticket, self.encryptmsg(host, sessionkey), self.encryptmsg(port, sessionkey),self.encryptmsg(self.serverid, sessionkey) , self.encryptmsg(self.getfolders(), sessionkey))
 		ts = self.decryptmsg(ts, sessionkey)
 		success = self.decryptmsg(success, sessionkey)
@@ -48,6 +52,7 @@ class Fileserver:
 
 	#decrypts tokens (from authserver)
 	def decryptToken(self, token):
+
 		token = base64.decodestring(token)
 		decryptor = ARC4.new(str(self.passwd))
 		token = decryptor.decrypt(token)
@@ -78,13 +83,54 @@ class Fileserver:
 	def read(self, ticket, path):
 		sessionkey = self.decryptTicket(ticket).split(' ')[0]
 		timestamp = self.decryptTicket(ticket).split(' ')[1]
+		#validate timestamp
 		if self.validate(timestamp):	
 			path = self.decryptmsg(path, sessionkey)
+			#try to read 
 			try:
-				f = open(self.rootdir+path,'r')
-				return self.encryptmsg(f.read(), sessionkey), self.encryptmsg(timestamp, sessionkey)
+				#if not locked
+				if not self.islocked(path)[0]:
+					f = open(self.rootdir+path,'r')
+					return self.encryptmsg('True', sessionkey),self.encryptmsg(f.read(), sessionkey), self.encryptmsg(timestamp, sessionkey)
+				#if locked
+				else:
+					return self.encryptmsg('False', sessionkey), self.encryptmsg('None', sessionkey), self.encryptmsg(timestamp, sessionkey)
+
+			#file not found
 			except:
 				raise IOError('[Errno 2] No such file or directory: '+path)
+		#invalid timestamp
+		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
+
+	#read a file from disk
+	def readopen(self, ticket, path, lockid):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp = self.decryptTicket(ticket).split(' ')[1]
+		#validate timestamp
+		if self.validate(timestamp):	
+			path = self.decryptmsg(path, sessionkey)
+			lockid = self.decryptmsg(lockid, sessionkey)
+			#try to read 
+			try:
+				#if locked
+				if self.islocked(path)[0]:
+					#check valid lockid
+					if self.islocked(path)[1] == lockid:
+						f = open(self.rootdir+path,'r')
+						return self.encryptmsg('True', sessionkey),self.encryptmsg(f.read(), sessionkey), self.encryptmsg(timestamp, sessionkey)
+					#invalid lockid
+					else:
+						return self.encryptmsg('False', sessionkey), self.encryptmsg('None', sessionkey), self.encryptmsg(timestamp, sessionkey)
+
+					
+				#if locked
+				else:
+					return self.encryptmsg('False', sessionkey), self.encryptmsg('None', sessionkey), self.encryptmsg(timestamp, sessionkey)
+
+			#file not found
+			except:
+				raise IOError('[Errno 2] No such file or directory: '+path)
+		#invalid timestamp
 		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 	#write a file to disk
@@ -135,6 +181,23 @@ class Fileserver:
 
 #helper functions
 
+	def islocked(self, path):
+		#get ticket
+		enctoken = self.authenticate('0')
+		ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken).split()
+		
+		#make request to dirserver
+		dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
+		success, ts, lid = dirproxy.islocked(ticket, self.encryptmsg(path, sessionkey))
+		if (self.decryptmsg(success , sessionkey)) == 'True':
+			#check timestamp	
+			if self.decryptmsg(ts , sessionkey) == timestamp:
+				return True, self.decryptmsg(lid , sessionkey)
+			else:
+				return 'Error', None #'error rogue agent'
+		else:
+			return False, None
+
 	# validates timestamps
 	def validate(self, timestamp):
 		if float(timestamp) >= float(time.time()):
@@ -158,4 +221,9 @@ class Fileserver:
 		print ' '.join(self.folders)
 	 	return ' '.join(self.folders)	
 
+	#Authenticates with Authserver and returns a token or a tupple of (token, host, port)
+	def authenticate(self, serverid):
+		proxy = xmlrpclib.ServerProxy('http://'+self.authhost+':'+self.authport+'/')
+		return proxy.authenticateServer(self.serverid, serverid)
+		
 serv = Fileserver('localhost', 10000, 'fserv', 'fspassword', sys.argv[1])

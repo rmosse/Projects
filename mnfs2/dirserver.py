@@ -25,7 +25,9 @@ class Dirserver:
 		server.register_function(self.registerFileServer , "registerFileServer")
 		server.register_function(self.getlocation , "getlocation")
 		server.register_function(self.lock , "lock")
+		server.register_function(self.renew , "renew")
 		server.register_function(self.unlock , "unlock")
+		server.register_function(self.islocked , "islocked")
 		server.register_function(self.setModified , "setModified")
 
 		host = socket.getfqdn()		
@@ -74,54 +76,7 @@ class Dirserver:
 		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
 	
 	
-	#Assigns a lock only for valid requests (it checks if the file has been modified since since the callers replica was)
-	def lock(self, ticket, path, modified):
-		sessionkey = self.decryptTicket(ticket).split(' ')[0]
-		timestamp =  self.decryptTicket(ticket).split(' ')[1]
-		if self.validate(timestamp):		
-			path = self.decryptmsg(path, sessionkey)
-			modified = self.decryptmsg(modified, sessionkey)
-			#check if in modified files list fix it if not
-			#check if caller cache is up to date
-			if modified == self.modified[path]:
-				#wait if locked
-				if path in locked:	
-					#Aquire lock
-					Axe = True
-					while Axe:		
-						mutex.acquire()
-						if self.locked[path] == True:
-							mutex.release()
-							time.sleep(1)
-						else:
-							#lock
-							self.locked[path] = True	
-							#update last modification time
-							ts = self.setModified(path)
-							#break loop
-							Axe = False
-							#return result to caller
-							return self.encryptmsg('True' ,sessionkey), self.encryptmsg(ts ,sessionkey)
-				#if not locked then proceed				
-				else:
-					#lock it
-					mutex.acquire()
-					self.locked[path] = True
-					#update last modification date	
-					ts = self.setModified(path)
-					#return result to caller
-					return self.encryptmsg('True' ,sessionkey), self.encryptmsg(ts ,sessionkey)
-					mutex.release()
-			#fail (catch all)
-			return self.encryptmsg('False' , sessionkey), self.encryptmsg('None', sessionkey)
-				
-
-
-	def unlock(self, path):
-		mutex.acquire()
-		self.locked[path] = False
-		mutex.release()
-
+	
 	#find last time a file was modified
 	def lastModified(self, ticket, path):
 		sessionkey = self.decryptTicket(ticket).split(' ')[0]
@@ -133,14 +88,76 @@ class Dirserver:
 			except:
 				pass
 		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
-	
-	def lock(self, path):
-		mutex.acquire()
-		mutex.release()
+#these functions handle locking
 
-	def unlock(self, path):
-		mutex.acquire()
-		mutex.release()
+	#simply locks
+	def lock(self, ticket, path):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		#validate ts
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			mutex.acquire()
+			if path in self.locked.keys():
+				mutex.release()			
+				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey) ,self.encryptmsg('None', sessionkey) 
+			lockid = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))	
+			self.locked[path] = lockid, float(time.time()) + float(30)
+			mutex.release()
+			return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey) ,self.encryptmsg(lockid, sessionkey) 
+		return self.encryptmsg('Error', sessionkey), self.encryptmsg(timestamp, sessionkey) 
+
+	#renews a lock before it expires
+	def renew(self, ticket, path, lockid):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		#validate ts
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			lockid = self.decryptmsg(lockid, sessionkey)
+			mutex.acquire()
+			if path not in self.locked.keys():
+				mutex.release()			
+				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey) 
+			if str((self.locked[path])[0]) == lockid: #check its locked by caller
+				self.locked[path] = lockid, float(time.time()) + float(30) #give's an extra 30 seconds
+				mutex.release()
+				return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey) 
+		return self.encryptmsg('Error', sessionkey), self.encryptmsg(timestamp, sessionkey) 
+	
+	#removes a lock
+	def unlock(self, ticket, path, lockid):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		#validate ts
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			lockid = self.decryptmsg(lockid, sessionkey)
+			mutex.acquire()
+			if path not in self.locked.keys():
+				mutex.release()			
+				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey) 
+			if str((self.locked[path])[0]) == lockid:
+				self.locked.pop(path)
+				mutex.release()
+				return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey) 
+		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey) 
+
+	#allows you to check if a file is locked
+	def islocked(self, ticket, path):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		#validate ts
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			mutex.acquire()
+			if path not in self.locked.keys():
+				mutex.release()			
+				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg('None', sessionkey)  
+			lockid = (self.locked[path])[0]
+			mutex.release()
+			return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg(lockid, sessionkey) 
+		return self.encryptmsg('Error', sessionkey), self.encryptmsg(timestamp, sessionkey) 
 
 #various encryption functions
 
