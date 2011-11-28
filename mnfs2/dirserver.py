@@ -75,12 +75,11 @@ class Dirserver:
 	
 	
 	#Assigns a lock only for valid requests (it checks if the file has been modified since since the callers replica was)
-	def lock(self, ticket, path, ltype, modified):
+	def lock(self, ticket, path, modified):
 		sessionkey = self.decryptTicket(ticket).split(' ')[0]
 		timestamp =  self.decryptTicket(ticket).split(' ')[1]
 		if self.validate(timestamp):		
 			path = self.decryptmsg(path, sessionkey)
-			ltype = self.decryptmsg(ltype, sessionkey)
 			modified = self.decryptmsg(modified, sessionkey)
 			#check if in modified files list fix it if not
 			try:
@@ -102,8 +101,7 @@ class Dirserver:
 							#lock
 							self.locked[path] = True	
 							#update last modification time
-							if ltype == 'write':			
-								ts = self.setModified(path)
+							ts = self.setModified(path)
 							#break loop
 							Axe = False
 							#return result to caller
@@ -114,8 +112,7 @@ class Dirserver:
 					mutex.acquire()
 					self.locked[path] = True
 					#update last modification date	
-					if ltype == 'write':			
-						ts = self.setModified(path)
+					ts = self.setModified(path)
 					#return result to caller
 					return self.encryptmsg('True' ,sessionkey), self.encryptmsg(ts ,sessionkey)
 					mutex.release()
