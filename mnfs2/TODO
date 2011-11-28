@@ -1,0 +1,59 @@
+**Progress
+Files Server /
+Security service /
+Cacheing X
+Locking X
+Replication X
+	
+***the following implements Replication, Caching and locking******
+***problem is a way to encrypt promice breaks***** 
+	--solution promice key, client asks fs for write lock fs obtains lock from ds and also adds a promice for client 
+	  providing the ds with	clients rpc address. The fileserver recieves a promice key and a lock timeout 
+	  from the ds and returns it to the user. now the can trust a promice break as it will be the promice id 
+	  this is also unusable to outside snoopers so can be sent in plain text.
+
+***problem keep write lock without timeout***
+	-- when a write request comes in and the lock is out if the timestamp is expired then we can check with the holder if he is 		   still alive and they can renew the timestamp otherwise we can remove the lock as they are dead
+	
+		(FILE SERVERS)		
+			--READ this means everytime a read is requested they must check last modified time 
+			  (to see if they are up to date) and perform read lock (same function)
+				-- as many read locks can be taken out as needed at one time !but not at the same time as a write lock
+				-- maybe atomicly increment an int for readlocks 
+				-- readlocks have a timeout of 3 seconds but can be longer this is because they may be 
+				   killed by a waiting writelock after 3 seconds
+	
+			--WRITE every time a write is requested it must block all new reads
+				-- only one write lock can be available at one time must block all read locks aswell
+					-- for this we could have the lock 
+					   for each file as a tupple (int readlock, TS Writelocktimestamp , String WLHolderRpcAdr, 						   long promiceKey)
+			
+				-- 1 fs locks(proceedure is to set write lock, then wait for all read locks to clear or kill them 					     after 3 seconds)
+				-- 2 ds then break all promices			
+				-- 3 do write this step will lash as long as the file is open on the client			
+				-- 4 fs unlocks write lock
+
+			--note write lock has expiry time 	
+
+		(CLIENTS)  can open readonly or write
+				--WRITE	
+					-- have a fileserver take out a write lock for you	
+				--READ
+					-- ask for promice if you dont have one( when asking send your rpc address)
+					-- file may be in use (this is when there is a write lock out)
+	
+	Fix Client caching for AFS
+	
+		--need to map fid's to paths and store in cacheindex cached files should have validity checked on startup
+	
+
+		--change the way we check a file for updates all the time before we use it.
+			--we need to just wait for promices to be broken so instead of asking the server if the promice is broken 
+			  just check a local hash map of files to promices
+		
+		-- on client startup we need to re get all promices by compareing timestamps and requesting a new promices
+	
+		-- open file semantics so when a file is open for writing 
+		   we must have a write lock on the server but we can work away locally.	
+	
+		-- when a file open for writing is closed it must be written through to server and the lock released
