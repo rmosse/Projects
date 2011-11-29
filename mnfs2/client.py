@@ -5,6 +5,7 @@ import random
 import os
 import xmlrpclib
 from Crypto.Cipher import ARC4
+from threading import Thread
 
 class mnfs:
 	def __init__(self, user, passwd, authhost, authport):
@@ -16,10 +17,75 @@ class mnfs:
 		self.cache = {}
 		self.openfiles = {}
 
+
+
+#API Actions
+	def read(self, path):
+		if path in self.openfiles:
+			success, data = self.readopen(path)
+			if success:
+				return data
+			else:
+				raise IOError('File in use')
+		else:
+			success, data =	self.normalread(path)
+			if success:
+				return data
+			else:
+				raise IOError('File in use')
+		
+	def open(self, path):
+		if not (path in self.openfiles):
+			success = self.lock(path)
+			if success:
+				#fork a thread that keeps the fileopen
+				t = Thread(target=self.renewer, args=(path,))
+				t.start()
+				return True
+			else:
+				raise IOError('File in use')
+		else:
+			return True
+
+	def write(self, path, data):
+		self.normalwrite(path, data)
+
+	def close(self, path):
+		if path in self.openfiles:
+			#unlock it
+			self.unlock(path)
+			#unlock locally
+			print 'closing'
+			self.openfiles.pop(path)
+			return True
+		else:
+			return True
+
 #file actions 
 
+	def renewer(self, path):
+		i = 0
+		while True:
+			try:
+			  	self.openfiles[path]
+				#renew lock (every 15 seconds)
+				if i == 10000:
+					success = self.renew(path)
+					#if the file has been closed
+					if not success:
+						#close file and quit
+						self.openfiles.pop(path)
+						return 0
+		
+			except:
+					return 0
+			#sleep 1 millisecond to save cpu
+			time.sleep(.001)
+			i+= 1				
+		
+
 	#read a file from the filesystem	
-	def read(self, filen):
+	def normalread(self, filen):
 		#see if we can use cached version
 		success, data = self.cacheread(filen)
 		if success:
@@ -70,98 +136,107 @@ class mnfs:
 			else:
 				return False, None
 	def readopen(self, filen):
-		#see if we can use cached version
-		success, data = self.cacheread(filen)
-		if success:
-			return True, data
-		else:
-			#get ticket for dirserver
-			#check to see if we already have a ticket
-			try:
-				ticket, timestamp = self.tickets[self.dirserverid]
-				assert(self.validate(timestamp))		
-			except:
-				enctoken, self.dirhost, self.dirport = self.authenticate('0')
-				ticket, self.dssessionkey, self.dirserverid, timestamp = self.decryptToken(enctoken)
-				self.tickets[self.dirserverid] = ticket, timestamp
+		#check if actually open
+		if filen in self.openfiles:
+			#see if we can use cached version
+			success, data = self.cacheread(filen)
+			if success:
+				return True, data
+			else:
+				#get ticket for dirserver
+				#check to see if we already have a ticket
+				try:
+					ticket, timestamp = self.tickets[self.dirserverid]
+					assert(self.validate(timestamp))		
+				except:
+					enctoken, self.dirhost, self.dirport = self.authenticate('0')
+					ticket, self.dssessionkey, self.dirserverid, timestamp = self.decryptToken(enctoken)
+					self.tickets[self.dirserverid] = ticket, timestamp
 		
-			#make request to dirserver
-			dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
-			success, ts, response = dirproxy.getlocation(ticket, self.encryptmsg(filen, self.dssessionkey)) 
-			if (self.decryptmsg(success , self.dssessionkey)) == 'True':
-				#check timestamp	
-				if self.decryptmsg(ts , self.dssessionkey) == timestamp:
-					fshost, fsport, serverid = self.decryptmsg(response, self.dssessionkey).split(':')
+				#make request to dirserver
+				dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
+				success, ts, response = dirproxy.getlocation(ticket, self.encryptmsg(filen, self.dssessionkey)) 
+				if (self.decryptmsg(success , self.dssessionkey)) == 'True':
+					#check timestamp	
+					if self.decryptmsg(ts , self.dssessionkey) == timestamp:
+						fshost, fsport, serverid = self.decryptmsg(response, self.dssessionkey).split(':')
+					else:
+						print 'error rogue agent'
 				else:
-					print 'error rogue agent'
-			else:
-				raise IOError('[Errno 2] No such file or directory: '+filen)
+					raise IOError('[Errno 2] No such file or directory: '+filen)
 		
-			#get ticket for fileserver
-			#check to see if we already have a ticket
-			try:
-				ticket, sessionkey, serverid, timestamp = self.tickets[serverid]
-				assert(self.validate(timestamp))		
-			except:
-				enctoken = self.authenticate(serverid)
-				ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken)
-				self.tickets[serverid] = ticket, sessionkey, serverid, timestamp 
+				#get ticket for fileserver
+				#check to see if we already have a ticket
+				try:
+					ticket, sessionkey, serverid, timestamp = self.tickets[serverid]
+					assert(self.validate(timestamp))		
+				except:
+					enctoken = self.authenticate(serverid)
+					ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken)
+					self.tickets[serverid] = ticket, sessionkey, serverid, timestamp 
 
-			#make request to fileserver
-			fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
-			success, data , ts = fsproxy.readopen(ticket, self.encryptmsg(filen, sessionkey), self.encryptmsg((self.openfiles[filen])[1] , sessionkey))
-			if self.decryptmsg(success ,sessionkey) == 'True':
-				if (self.decryptmsg(ts ,sessionkey) == timestamp):
-					self.ensure_dir('cache'+filen)
-					self.cachewrite(filen, self.decryptmsg(data,sessionkey))
-					return True, self.decryptmsg(data,sessionkey)
+				#make request to fileserver
+				fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
+				success, data , ts = fsproxy.readopen(ticket, self.encryptmsg(filen, sessionkey), self.encryptmsg((self.openfiles[filen])[1] , sessionkey))
+				if self.decryptmsg(success ,sessionkey) == 'True':
+					if (self.decryptmsg(ts ,sessionkey) == timestamp):
+						self.ensure_dir('cache'+filen)
+						self.cachewrite(filen, self.decryptmsg(data,sessionkey))
+						return True, self.decryptmsg(data,sessionkey)
+					else:
+						raise IOError('rogue agent')			
 				else:
-					raise IOError('rogue agent')			
-			else:
-				return False, None
+					return False, None
 
-	def write(self, filen, data):
-		#get ticket for dirserver
-		#check to see if we already have a ticket
-		try:
-			ticket, timestamp = self.tickets[self.dirserverid]
-			assert(self.validate(timestamp))		
-		except:
-			enctoken, self.dirhost, self.dirport = self.authenticate('0')
-			ticket, self.dssessionkey, self.dirserverid, timestamp = self.decryptToken(enctoken)
-			self.tickets[self.dirserverid] = ticket, timestamp
-	
-		#make request to dirserver
-		dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
-		success, ts, response = dirproxy.getlocation(ticket, self.encryptmsg(filen, self.dssessionkey)) 
-		if (self.decryptmsg(success , self.dssessionkey)) == 'True':
-			#check timestamp	
-			if self.decryptmsg(ts , self.dssessionkey) == timestamp:
-				fshost, fsport, serverid = self.decryptmsg(response, self.dssessionkey).split(':')
-			else:
-				print 'error rogue agent'
-		else:
-			raise IOError('[Errno 2] No such file or directory: '+filen)
-	
-		#get ticket for fileserver
-		#check to see if we already have a ticket
-		try:
-			ticket, sessionkey, serverid, timestamp = self.tickets[serverid]
-			assert(self.validate(timestamp))		
-		except:
-			enctoken = self.authenticate(serverid)
-			ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken)
-			self.tickets[serverid] = ticket, sessionkey, serverid, timestamp 
+	def normalwrite(self, filen, data):
+		#check if actually open
+		if filen in self.openfiles:
+				#get ticket for dirserver
+				#check to see if we already have a ticket
+				try:
+					ticket, timestamp = self.tickets[self.dirserverid]
+					assert(self.validate(timestamp))		
+				except:
+					enctoken, self.dirhost, self.dirport = self.authenticate('0')
+					ticket, self.dssessionkey, self.dirserverid, timestamp = self.decryptToken(enctoken)
+					self.tickets[self.dirserverid] = ticket, timestamp
+		
+				#make request to dirserver
+				dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
+				success, ts, response = dirproxy.getlocation(ticket, self.encryptmsg(filen, self.dssessionkey)) 
+				if (self.decryptmsg(success , self.dssessionkey)) == 'True':
+					#check timestamp	
+					if self.decryptmsg(ts , self.dssessionkey) == timestamp:
+						fshost, fsport, serverid = self.decryptmsg(response, self.dssessionkey).split(':')
+					else:
+						print 'error rogue agent'
+				else:
+					raise IOError('[Errno 2] No such file or directory: '+filen)
+		
+				#get ticket for fileserver
+				#check to see if we already have a ticket
+				try:
+					ticket, sessionkey, serverid, timestamp = self.tickets[serverid]
+					assert(self.validate(timestamp))		
+				except:
+					enctoken = self.authenticate(serverid)
+					ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken)
+					self.tickets[serverid] = ticket, sessionkey, serverid, timestamp 
 
-		#make request to fileserver
-		fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
-		success, ts = fsproxy.write(ticket, self.encryptmsg(filen, sessionkey), self.encryptmsg(data, sessionkey)) 
-		if (self.decryptmsg(ts ,sessionkey) == timestamp):
-			self.ensure_dir('cache'+filen)
-			self.cachewrite(filen, self.decryptmsg(data,sessionkey))
-			return self.decryptmsg(data,sessionkey)
-		else:
-			raise IOError('rogue agent')		
+				#make request to fileserver
+				fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
+				success, ts, newts = fsproxy.write(ticket, self.encryptmsg(filen, sessionkey),self.encryptmsg(data, sessionkey), self.encryptmsg((self.openfiles[filen])[1] , sessionkey))
+				if self.decryptmsg(success ,sessionkey) == 'True':
+					if (self.decryptmsg(ts ,sessionkey) == timestamp):
+						self.ensure_dir('cache'+filen)
+						self.cachewrite(filen, data)
+						self.cache[filen] = self.decryptmsg(newts ,sessionkey)
+						return True
+					else:
+						raise IOError('rogue agent')			
+				else:
+					return False, None
+
 
 
 	#TODO remove for testing only	
@@ -184,12 +259,12 @@ class mnfs:
 				if self.decryptmsg(ts , self.dssessionkey) == timestamp:
 					lockid = self.decryptmsg(response, self.dssessionkey)
 					self.openfiles[filen] = True, lockid
-					return 0
+					return True
 				else:
 					print 'error rogue agent'
+					return False
 			else:
-				print 'file in use'
-				return 1
+				return False
 			
 			
 	#TODO remove for testing only	
@@ -216,17 +291,16 @@ class mnfs:
 				#check timestamp	
 				if self.decryptmsg(ts , self.dssessionkey) == timestamp:
 					print 'renewed'	
-					return 0
+					return True
 				else:
 					print 'error rogue agent'
 			else:
 				print 'not locked'
-				return 1
+				return False
 			
 		else:
-			return 1
+			return False
 
-	#TODO remove for testing only	
 	def unlock(self, filen):
 		try:
 			lockd, lockid = self.openfiles[filen]
@@ -249,12 +323,10 @@ class mnfs:
 			if (self.decryptmsg(success , self.dssessionkey)) == 'True':
 				#check timestamp	
 				if self.decryptmsg(ts , self.dssessionkey) == timestamp:
-					print 'unlocked'	
 					return 0
 				else:
 					print 'error rogue agent'
 			else:
-				print 'not locked'
 				return 1
 			
 		else:
@@ -302,6 +374,7 @@ class mnfs:
 			ftimestamp = self.cache[path]
 			assert(self.upToDate(path, ftimestamp))
 			f = open('cache'+fileid,'r')
+			print 'cache read'
 			return True, f.read()
 		except:
 			return False, None
@@ -377,8 +450,4 @@ class mnfs:
         		os.makedirs(d)
 
 
-fs = mnfs('user','password' ,'localhost', '10000')
-print fs.read('/folder1/file1')
-fs.lock('/folder1/file1')
-print fs.read('/folder1/file1')
-print fs.readopen('/folder1/file1')
+

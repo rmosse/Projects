@@ -22,6 +22,7 @@ class Fileserver:
 		server.register_function(self.read, "read")
 		server.register_function(self.readopen, "readopen")
 		server.register_function(self.write, "write")
+		server.register_function(self.serverwrite, "serverwrite")
 		server.register_function(self.append, "append")
 		server.register_function(self.delete, "delete")
 		host = socket.getfqdn()		
@@ -134,20 +135,38 @@ class Fileserver:
 		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 	#write a file to disk
-	def write(self, ticket, path, data):
+	def write(self, ticket, path, data, lockid):
 		sessionkey = self.decryptTicket(ticket).split(' ')[0]
 		timestamp = self.decryptTicket(ticket).split(' ')[1]
 		if self.validate(timestamp):
 			path = self.decryptmsg(path, sessionkey)
 			data = self.decryptmsg(data, sessionkey)
-			try:
-				self.ensure_dir(path)
-				f = open(self.rootdir+path,'w')
-				f.write(data)
-				return self.encryptmsg(True, sessionkey), self.encryptmsg(timestamp, sessionkey)
-			except:
-				raise IOError('write error'+path)
-		return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
+			lockid = self.decryptmsg(lockid, sessionkey)
+		#	try:
+			#if locked
+			if self.islocked(path)[0]:
+				#check valid lockid
+				if self.islocked(path)[1] == lockid:
+					#write to all replicas
+					self.writepeers(path, data)	
+					#write to fileserver
+					self.ensure_dir(path)
+					f = open(self.rootdir+path,'w')
+					f.write(data)
+					success, ts = self.setModified(path)
+					if success:
+						return self.encryptmsg(True, sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg(ts, sessionkey)
+					else:	
+						return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey),self.encryptmsg('None', sessionkey)			
+				#invalid lockid
+				else:
+					return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey),self.encryptmsg('None', sessionkey)
+			#if not locked
+			else:
+				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
+		#	except:
+	#			raise IOError('write error'+path)
+	#	return self.encryptmsg(False, sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 	#append to a file and write to disk
 	def append(self, ticket, path, data):
@@ -180,6 +199,68 @@ class Fileserver:
 	
 
 #helper functions
+	
+	#gets peers who have a replica and calls function to write to each one
+	def writepeers(self, path, contents):
+		#get peers from dir server
+			#do Auth
+			#get ticket
+			enctoken = self.authenticate('0')
+			ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken).split()
+		
+			#make request to dirserver
+			dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
+			success, ts, servers = dirproxy.getpeers(ticket, self.encryptmsg(path, sessionkey),self.encryptmsg(timestamp, sessionkey))
+			
+			servers = self.decryptmsg(servers , sessionkey).split(' ')
+			servers.remove('')	
+			if (self.decryptmsg(success , sessionkey)) == 'True':
+				#check timestamp	
+				if self.decryptmsg(ts , sessionkey) == timestamp:
+					for server in servers:
+						#write to each peer
+						self.writes(server, path, contents)		
+					return True
+				else:
+					return 'Error', None #'error rogue agent'
+			else:
+				return False, None			
+			
+			servers = servers.split(' ')		
+	
+	#writes to an actual replica		
+	def writes(self, server, path, contents):
+			#get server details
+			fshost = server[0:server.index(':')]
+			fsport = int(server[server.index(':')+1:server.rfind(':')])
+			fssid  = server[server.rfind(':')+1:] 
+			#quit if for this server
+			if fssid == self.serverid:
+				pass
+			else:
+				print 'writing to a replica of', path, 'sid: ', fssid
+				#get token from Auth server
+				enctoken = self.authenticate(fssid)
+				ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken).split()
+				#make request to file server
+				fsproxy = xmlrpclib.ServerProxy('http://'+fshost+':'+str(fsport)+'/')
+				success, ts = fsproxy.serverwrite(ticket, self.encryptmsg(path, sessionkey),self.encryptmsg(contents, sessionkey))
+				if self.validate(timestamp) and success:
+					return True
+				else:
+					return False
+		
+	def serverwrite(self,ticket, path, data):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp = self.decryptTicket(ticket).split(' ')[1]
+		if self.validate(timestamp):
+			path = self.decryptmsg(path, sessionkey)
+			data = self.decryptmsg(data, sessionkey)
+			#do write
+			self.ensure_dir(path)
+			f = open(self.rootdir+path,'w')
+			f.write(data)
+			return self.encryptmsg(True, sessionkey), self.encryptmsg(timestamp, sessionkey)
 
 	def islocked(self, path):
 		#get ticket
@@ -197,6 +278,23 @@ class Fileserver:
 				return 'Error', None #'error rogue agent'
 		else:
 			return False, None
+	def setModified(self, path):
+		#get ticket
+		enctoken = self.authenticate('0')
+		ticket, sessionkey, serverid, timestamp = self.decryptToken(enctoken).split()
+		
+		#make request to dirserver
+		dirproxy = xmlrpclib.ServerProxy('http://'+self.dirhost+':'+str(self.dirport)+'/')
+		success, ts, newts = dirproxy.setModified(ticket, self.encryptmsg(path, sessionkey))
+		if (self.decryptmsg(success , sessionkey)) == 'True':
+			#check timestamp	
+			if self.decryptmsg(ts , sessionkey) == timestamp:
+				return True, self.decryptmsg(newts, sessionkey)
+			else:
+				return False, None #'error rogue agent'
+		else:
+			return False, None
+
 
 	# validates timestamps
 	def validate(self, timestamp):
@@ -206,8 +304,9 @@ class Fileserver:
 	#helper function to create new directories when necessary
 	def ensure_dir(self, f):
 		d = os.path.dirname(f)
-		if not os.path.exists(d):
-        		os.makedirs(d)
+		if not os.path.exists(self.rootdir+d):
+			os.makedirs(self.rootdir+d)
+			
 
 	#helper function to make a list of all files on the server
 	def getfolders(self):

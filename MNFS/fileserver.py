@@ -236,6 +236,8 @@ class fileservice(threading.Thread):
 				self.writes(server, path, contents)		
 			return True
 
+	#do actual replica writing
+
 	#Do Auth
 	def doauth(self,serverid):
 		conn = secureconnection(authhost,authport)

@@ -9,7 +9,7 @@ from SimpleXMLRPCServer import SimpleXMLRPCServer
 from threading import Lock
 
 mutex = Lock()
-
+modifiedmutex = Lock()
 class Dirserver:
 #setup
 	
@@ -24,6 +24,7 @@ class Dirserver:
 		server.register_multicall_functions()
 		server.register_function(self.registerFileServer , "registerFileServer")
 		server.register_function(self.getlocation , "getlocation")
+		server.register_function(self.getpeers , "getpeers")
 		server.register_function(self.lock , "lock")
 		server.register_function(self.renew , "renew")
 		server.register_function(self.unlock , "unlock")
@@ -88,6 +89,33 @@ class Dirserver:
 			except:
 				pass
 		return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey)
+	#updates file timestamps so clients can validate local cached copies and replicas can be validated
+	def setModified(self, ticket, path):
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			stamp = str(time.time())
+			mutex.acquire()
+			self.modified[path] = str(stamp)
+			mutex.release()
+			return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg(stamp, sessionkey)
+	
+
+	def getpeers(self, ticket, path, timestamp):
+		#see if it exists
+		sessionkey = self.decryptTicket(ticket).split(' ')[0]
+		timestamp =  self.decryptTicket(ticket).split(' ')[1]
+		if self.validate(timestamp):		
+			path = self.decryptmsg(path, sessionkey)
+			try:
+				key = path[0:path.rfind('/')]
+				msg = self.maindict[key]
+				msg = str(' '.join(msg))
+				return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg(msg, sessionkey)
+			except:
+				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg('None', sessionkey)	
+
 #these functions handle locking
 
 	#simply locks
@@ -102,7 +130,7 @@ class Dirserver:
 				mutex.release()			
 				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey) ,self.encryptmsg('None', sessionkey) 
 			lockid = int(math.floor(random.uniform(100000000000000000, 999999999999999999)))	
-			self.locked[path] = lockid, float(time.time()) + float(30)
+			self.locked[path] = lockid, float(time.time()) + float(60)
 			mutex.release()
 			return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey) ,self.encryptmsg(lockid, sessionkey) 
 		return self.encryptmsg('Error', sessionkey), self.encryptmsg(timestamp, sessionkey) 
@@ -120,7 +148,7 @@ class Dirserver:
 				mutex.release()			
 				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey) 
 			if str((self.locked[path])[0]) == lockid: #check its locked by caller
-				self.locked[path] = lockid, float(time.time()) + float(30) #give's an extra 30 seconds
+				self.locked[path] = lockid, float(time.time()) + float(60) #give's an extra 60 seconds
 				mutex.release()
 				return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey) 
 		return self.encryptmsg('Error', sessionkey), self.encryptmsg(timestamp, sessionkey) 
@@ -151,12 +179,20 @@ class Dirserver:
 		if self.validate(timestamp):		
 			path = self.decryptmsg(path, sessionkey)
 			mutex.acquire()
+			#if not locked
 			if path not in self.locked.keys():
 				mutex.release()			
 				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg('None', sessionkey)  
+			#if lock expired
+			if (self.locked[path])[1] < time.time():
+				self.locked.pop(path)
+				mutex.release()
+				return self.encryptmsg('False', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg('None', sessionkey)  
+			#if has valid lock 
 			lockid = (self.locked[path])[0]
 			mutex.release()
 			return self.encryptmsg('True', sessionkey), self.encryptmsg(timestamp, sessionkey), self.encryptmsg(lockid, sessionkey) 
+		#failed invalid timestamp
 		return self.encryptmsg('Error', sessionkey), self.encryptmsg(timestamp, sessionkey) 
 
 #various encryption functions
@@ -194,11 +230,6 @@ class Dirserver:
 			return True
 		return False
 
-	#updates file timestamps so clients can validate local cached copies and replicas can be validated
-	def setModified(self, path):
-		stamp = str(time.time())
-		self.modified[path] = str(time.time(stamp))
-		return stamp
 	
 
 	# incorporates the directory list of a new fileserver in to a global hashmap of directories to a list 
