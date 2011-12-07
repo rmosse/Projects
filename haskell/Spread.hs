@@ -77,14 +77,12 @@ invalid' sheet output str= do
 				putStrLn str
 				prompt sheet output
 				return ()
---getdate
-getDate:: IO (Integer,Int,Int) -- :: (year,month,day)
-getDate = getCurrentTime >>= return . toGregorian . utctDay
+
 
 --processes non IO functions
 handle sheet output toks = do
 						let (msg, sheet', (output',fname)) = (process sheet (date) output toks)
-							where date = getCurrentTime >>= return . toGregorian . utctDay
+							where date = (2012,12,11)
 						if output' == True						
 						then
 							appendFile fname msg
@@ -93,7 +91,7 @@ handle sheet output toks = do
 						prompt sheet' (output',fname)
 						return ()
 
-process:: [[String]] -> (Integer, Int, Int) -> String -> (Bool,String) -> [Token] -> (String,[[String]],(Bool,String))
+process:: [[String]] -> (Int, Int, Int) -> (Bool,String) -> [Token] -> (String,[[String]],(Bool,String))
 process sheet date output toks =  case toks of							
 							((Invalid str):ts)		-> invalid sheet output str
 							(tok:(Invalid str):ts)	-> invalid sheet output str
@@ -118,13 +116,14 @@ process sheet date output toks =  case toks of
 invalid sheet output msg = (msg, sheet, output)
 
 --report
+report:: [[String]] -> (Int,Int,Int) -> (Bool, String) -> [Token] ->  (String ,[[String]] , (Bool, String))
 report sheet date output [Registrations] =  (answer, sheet , output)
 	where 
 		answer = getClub sheet 
 
 report sheet date output [Completions] = (answer , sheet, output)
 		where
-			answer = getComps date sheet
+			answer = foldl (++) "" (map (++"\n")  (getComps date sheet))
 
 getClub :: [[String]] -> [Char]
 getClub [] = countreplicas [] 
@@ -144,20 +143,22 @@ countreplicas' num last (c:cs) 	| c == last = countreplicas' (num+1) last cs
 					 		  	| otherwise =(last ++": "++ (show num) ++ "\n") ++ (countreplicas' 1 c cs)
 
 
-getComps:: String -> [[String]] -> [String]
+getComps:: (Int,Int,Int)-> [[String]] -> [String]
 getComps date (c:cs) = getComps' date (getcolumn 0 "Expected Completion Date" c) (getcolumn 0 "Map Name" c) cs
 
-getComps':: String -> Int -> Int -> [[String]] -> [String]
+getComps':: (Int,Int,Int)-> Int -> Int -> [[String]] -> [String]
 getComps' date i j [] = []
-getComps' date i j (r:rows) | checkcompleted (r !! i) date = (r !! j): getComps' date i j rows
+getComps' date i j (r:rows)	| (length r) < i || (length r) < j = []
+							| checkcompleted (r !! i) date = (r !! j): getComps' date i j rows
+							| otherwise = getComps' date i j rows
 
 getcolumn ::Int -> String-> [String] -> Int
 getcolumn i name (c:cs) 		| c == name = i 
 								| otherwise = getcolumn (i+1) name cs
-checkcompleted:: String -> (Integer, Int, Int) -> Bool
+checkcompleted:: String -> (Int, Int, Int) -> Bool
 checkcompleted date cdate =  do
-						let (yyyy,mm,dd) = date
-						let (day, month, year) = Date.toDate cdate
+						let (yyyy,mm,dd) = cdate
+						let (day, month, year) = Date.toDate date
 						checkcompleted' dd mm yyyy day month year
 
 checkcompleted' d m y cd cm cy 	| y > cy = True
@@ -171,6 +172,7 @@ checkcompleted' d m y cd cm cy 	| y > cy = True
 
 --count
 count sheet output args = (show args ,sheet, output)
+
 
 --list
 list sheet output args = (show args, sheet, output)

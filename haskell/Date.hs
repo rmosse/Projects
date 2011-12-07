@@ -31,11 +31,14 @@ toDate str@(a:b:c:cs)
 
 	| str =~ "^[3][01]/[01][0-9]/[12][0-9][0-9][0-9]$" 
  = tuplify (slashdateparser [] str)
+	| str =~ ""
+ = (0,0,9000)
 
 		where year = 	if (season2mon str) == 3
 						then (year2int [] str) +1
 						else (year2int [] str) 
-
+	
+toDate _ = (0,0,9000)
 
 isDate :: String -> Bool
 isDate str 	| str =~ "^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)-[01][0-9]$" = True--Mmm-yy
@@ -116,6 +119,7 @@ season2mon' str
 			| str =~ "Winter|winter" = 3
 
 slashdateparser::  String -> String -> [String]
+slashdateparser  buffer  [] = []
 slashdateparser  buffer (c:cs) 	| c == '/' = buffer : (slashdateparser' [] cs) 
 							 	| isDigit c = slashdateparser (buffer++[c]) cs
 								| otherwise = slashdateparser buffer cs
@@ -131,5 +135,6 @@ slashdateparser'' buffer (c:cs) | isDigit c = slashdateparser'' (buffer++ [c]) c
 								| otherwise = slashdateparser'' buffer cs
 
 tuplify :: [String] -> (Int,Int,Int)
+tuplify [] = (0,0,9000)
 tuplify [x,y,z] = ((read x),(read y), (read z))
 
