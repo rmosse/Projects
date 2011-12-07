@@ -6,6 +6,9 @@ import IO
 import Parser
 import Lexer
 import Csvparser
+import Data.Time.Clock
+import Data.Time.Calendar
+import Date
 main = prompt [] (False, "console")
 
 prompt:: [[String]] -> (Bool, String) -> IO ()
@@ -74,10 +77,14 @@ invalid' sheet output str= do
 				putStrLn str
 				prompt sheet output
 				return ()
+--getdate
+getDate:: IO (Integer,Int,Int) -- :: (year,month,day)
+getDate = getCurrentTime >>= return . toGregorian . utctDay
 
 --processes non IO functions
 handle sheet output toks = do
-						let (msg, sheet', (output',fname)) = (process sheet output toks)
+						let (msg, sheet', (output',fname)) = (process sheet (date) output toks)
+							where date = getCurrentTime >>= return . toGregorian . utctDay
 						if output' == True						
 						then
 							appendFile fname msg
@@ -86,11 +93,11 @@ handle sheet output toks = do
 						prompt sheet' (output',fname)
 						return ()
 
-process:: [[String]] -> (Bool,String) -> [Token] -> (String,[[String]],(Bool,String))
-process sheet output toks =  case toks of							
+process:: [[String]] -> (Integer, Int, Int) -> String -> (Bool,String) -> [Token] -> (String,[[String]],(Bool,String))
+process sheet date output toks =  case toks of							
 							((Invalid str):ts)		-> invalid sheet output str
 							(tok:(Invalid str):ts)	-> invalid sheet output str
-							(Report:ts) 			-> report sheet  output ts
+							(Report:ts) 			-> report sheet date output ts
 							(Count:ts)    			-> count sheet output ts
 							(List:ts)    			-> list sheet output ts
 							(Distinct:ts)    		-> distinct sheet output ts							
@@ -111,13 +118,13 @@ process sheet output toks =  case toks of
 invalid sheet output msg = (msg, sheet, output)
 
 --report
-report sheet output [Registrations] =  (answer, sheet , output)
+report sheet date output [Registrations] =  (answer, sheet , output)
 	where 
 		answer = getClub sheet 
 
-report sheet output [Completions] = (answer , sheet, output)
+report sheet date output [Completions] = (answer , sheet, output)
 		where
-			answer = "nyi\n"
+			answer = getComps date sheet
 
 getClub :: [[String]] -> [Char]
 getClub [] = countreplicas [] 
@@ -135,6 +142,32 @@ countreplicas':: Int -> String -> [String] -> [Char]
 countreplicas' num last [] = last ++": "++ (show num) ++ "\n"
 countreplicas' num last (c:cs) 	| c == last = countreplicas' (num+1) last cs
 					 		  	| otherwise =(last ++": "++ (show num) ++ "\n") ++ (countreplicas' 1 c cs)
+
+
+getComps:: String -> [[String]] -> [String]
+getComps date (c:cs) = getComps' date (getcolumn 0 "Expected Completion Date" c) (getcolumn 0 "Map Name" c) cs
+
+getComps':: String -> Int -> Int -> [[String]] -> [String]
+getComps' date i j [] = []
+getComps' date i j (r:rows) | checkcompleted (r !! i) date = (r !! j): getComps' date i j rows
+
+getcolumn ::Int -> String-> [String] -> Int
+getcolumn i name (c:cs) 		| c == name = i 
+								| otherwise = getcolumn (i+1) name cs
+checkcompleted:: String -> (Integer, Int, Int) -> Bool
+checkcompleted date cdate =  do
+						let (yyyy,mm,dd) = date
+						let (day, month, year) = Date.toDate cdate
+						checkcompleted' dd mm yyyy day month year
+
+checkcompleted' d m y cd cm cy 	| y > cy = True
+							   	| y < cy = False		
+								| y == cy && m > cm = True
+ 								| y == cy && m < cm = False
+								| y == cy && m == cm && d > cd = True
+								| cy == 0 && cm == 0 && cd == 0 = True
+								| otherwise = False
+
 
 --count
 count sheet output args = (show args ,sheet, output)
