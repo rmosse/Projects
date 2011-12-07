@@ -70,10 +70,10 @@ scan' (c:cs)
 
 scan' jnk = junklexer [] jnk
 
-columnnumlexer sofar "" = [Quotedstr ('$':reverse sofar)]
+columnnumlexer sofar "" = [Quotedstr (reverse sofar)]
 columnnumlexer sofar str@(c:cs)
  | isDigit c  =  columnnumlexer (c:sofar) cs
- | otherwise  =  (Quotedstr ('$':reverse sofar)) : scan str
+ | otherwise  =  (Quotedstr (reverse sofar)) : scan str
 							
 junklexer sofar "" = [Junk (reverse sofar)]
 junklexer sofar str@(c:cs)

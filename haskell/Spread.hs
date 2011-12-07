@@ -8,6 +8,7 @@ import Lexer
 import Csvparser
 import Data.Time.Clock
 import Data.Time.Calendar
+import Text.Regex.Posix
 import Date
 main = prompt [] (False, "console")
 
@@ -144,6 +145,7 @@ countreplicas' num last (c:cs) 	| c == last = countreplicas' (num+1) last cs
 
 
 getComps:: (Int,Int,Int)-> [[String]] -> [String]
+getComps date [] =[]
 getComps date (c:cs) = getComps' date (getcolumn 0 "Expected Completion Date" c) (getcolumn 0 "Map Name" c) cs
 
 getComps':: (Int,Int,Int)-> Int -> Int -> [[String]] -> [String]
@@ -162,7 +164,7 @@ checkcompleted date cdate =  do
 						checkcompleted' dd mm yyyy day month year
 
 checkcompleted' d m y cd cm cy 	| y > cy = True
-							   	| y < cy = False		
+							   	| y < cy = False
 								| y == cy && m > cm = True
  								| y == cy && m < cm = False
 								| y == cy && m == cm && d > cd = True
@@ -171,8 +173,19 @@ checkcompleted' d m y cd cm cy 	| y > cy = True
 
 
 --count
-count sheet output args = (show args ,sheet, output)
+count :: [[String]] -> (Bool, String) -> [Token] -> (String , [[String]], (Bool, String))
+count sheet output conds = ((show (length (evalconds sheet conds)))++"\n", sheet, output)
 
+evalconds :: [[String]] -> [Token] -> [Bool]
+evalconds [] conds = []
+evalconds (r:rs) conds | (evalcell r conds) = True : (evalconds rs conds)
+					   | otherwise = (evalconds rs conds)
+evalcell :: [String] ->  [Token] -> Bool
+evalcell [""] _ = False
+evalcell row [] = True
+evalcell row ((ConditionStr rownum condition str):cs) 	| ((length row) < ((read rownum)::Int)) = False
+														| (row !! ((read rownum)::Int)) =~ str = True && evalcell row cs
+														| otherwise = False
 
 --list
 list sheet output args = (show args, sheet, output)
