@@ -56,7 +56,7 @@ distinctparser tok@[Ident str] = tok
 distinctparser tok@[Quotedstr str] = tok
 distinctparser junk = junkparser "usage: distinct  <column><condition><glob string> " junk
 
---datefiparser
+--datefixparser
 datefixparser :: [Token] -> [Token] 
 datefixparser tok@[(Ident str),(Date date)] = tok
 datefixparser tok@[(Quotedstr str),(Date date)] = [(Ident str),(Date date)]

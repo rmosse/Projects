@@ -10,6 +10,8 @@ import Data.Time.Clock
 import Data.Time.Calendar
 import Text.Regex.Posix
 import Date
+import Data.List
+
 main = prompt [] (False, "console")
 
 prompt:: [[String]] -> (Bool, String) -> IO ()
@@ -106,11 +108,11 @@ process sheet date output toks =  case toks of
 							(DateFix:ts) 			-> datefix sheet output ts
 							(GridFix:ts) 			-> gridfix sheet output ts
 							(Reformat:ts)   		-> reformat sheet output ts
-							(Sort:ts)  				-> sort sheet output ts
+							(Sort:ts)  				-> sortf sheet output ts
 							(Select:ts) 			-> select sheet output ts
 							(Update:ts)				-> update sheet output ts
-							(Delete:ts) 			-> delete sheet output ts
-							(Insert:ts)				-> insert sheet output ts
+							(Delete:ts) 			-> deletef sheet output ts
+							(Insert:ts)				-> insertf sheet output ts
 							junk					-> (("invalid") , sheet , output)
 
 --Regular Functions
@@ -188,10 +190,47 @@ evalcell row ((ConditionStr rownum condition str):cs) 	| ((length row) < ((read 
 														| otherwise = False
 
 --list
-list sheet output args = (show args, sheet, output)
+list :: [[String]] -> (Bool, String) -> [Token] -> (String , [[String]], (Bool, String))
+list sheet output conds = ((foldl (++) ""  (map (++" ") (evalconds' sheet conds))), sheet, output)
+
+evalconds' :: [[String]] -> [Token] -> [String]
+evalconds' [] conds = []
+evalconds' (r:rs) conds 	| (evalcell' r conds) = (strip r) ++ ["\n"] ++ (evalconds' rs conds)
+							| otherwise = (evalconds' rs conds)
+
+evalcell' :: [String] ->  [Token] -> Bool
+evalcell' [""] _ = False
+evalcell' row [] = True
+evalcell' row ((ConditionStr rownum condition str):cs) 	| ((length row) < ((read rownum)::Int)) = False
+														| (row !! ((read rownum)::Int)) =~ str = True && evalcell' row cs
+														| otherwise = False
+																
+								
+
+strip [] = []
+strip (c:cs) | c /= "" = c : strip cs
+			 | otherwise = strip cs
+
+
 
 --distinct
-distinct sheet output args = (show args, sheet, output)
+distinct :: [[String]] -> (Bool, String) -> [Token] -> (String, [[String]], (Bool, String))
+distinct sheet output (args:ts) = (findunique sheet args, sheet, output)
+findunique sheet (Quotedstr column) = foldl (++) "" (map (++"\n") (unique column' column'))
+	where column' = (getcol (((read column)::Int)) sheet)
+
+getcol ::Int -> [[String]] -> [String]
+getcol i [] = []
+getcol i (r:rs) | i > ((length r) -1) = [] :  getcol i rs
+				| otherwise = (r !! i) : getcol i rs
+
+
+unique list [] = []				
+unique list (c:cs)  | (notElem c (delete c list)) = c : unique list cs
+					| otherwise = unique list cs
+
+
+
 
 --output
 out_put sheet output [Quotedstr str]	= (("output redirected to "++str++"\n"), sheet, (True,str))
@@ -203,21 +242,30 @@ nooutput sheet output args = ("output redirected to console" , sheet, (False,"co
 help sheet output = ("help", sheet, output)
 
 --datefix
-datefix sheet output args = (show args, sheet, output)
+datefix sheet output args = (datefix' sheet args, sheet, output)
+datefix' :: [[String]] -> [Token] -> String
+datefix' [] _ = []
+datefix' (r:rs) args = (datefix'' r args) ++ (datefix' rs args) 
 
+datefix'' :: [String] -> [Token] -> String
+datefix'' [] _ = []
+datefix'' (c:cs) args 	| isDate c =  c ++"\n"++ (datefix'' cs args)
+					 	| otherwise = datefix'' cs args
 
 gridfix sheet output args = (show args, sheet, output)
 
 reformat sheet output args = (show args, sheet, output)
 
-sort sheet output args = (show args, sheet, output)
+sortf sheet output args = (show args, sheet, output)
+
+--sort' sheet (Descending:ts) =
 
 select sheet output args = (show args, sheet, output)
 
 update sheet output args = (show args, sheet, output)
 
-delete sheet output args = (show args, sheet, output)
+deletef sheet output args = (show args, sheet, output)
 
-insert sheet output args = (show args, sheet, output)
+insertf sheet output args = (show args, sheet, output)
 
 junker sheet output args =(show args, sheet, output)

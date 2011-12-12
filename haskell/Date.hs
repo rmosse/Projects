@@ -56,7 +56,7 @@ isDate str 	| str =~ "^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|jan
 			| str =~ "^[3][01]/[01][0-9]/[12][0-9][0-9][0-9]$" = True
 
 
-
+isDate _ = False
 mon2int :: String -> Int
 mon2int mon = mon2int' (getMon [] mon) 
 mon2int' :: String -> Int

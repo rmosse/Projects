@@ -1,2 +1,2 @@
 Have fileserver update modified time on dirserver before write 
-also have dirserver check it is the mostrecent otherwize reject it
+also have dirserver check it is the most recent otherwize reject it
