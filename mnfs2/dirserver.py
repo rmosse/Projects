@@ -244,7 +244,7 @@ class Dirserver:
 			newslist.append(host+':'+port+':'+serverid)
 			self.maindict[item] = tuple(newslist)
 			self.modified[item] = str(time.time())	
-			print "fixme remove dead servers"
+
 				
 		#add new files (gets the diff between the two sets and the adds them to the new ones to the global dictionary)
 		for item in set(self.maindict) ^ set(servlist):

@@ -28,7 +28,7 @@ parseExpr (Delete:ts) = Delete: deleteparser ts
 parseExpr (Insert:ts) = Insert: insertparser ts
 parseExpr (Help:ts) = [Help]
 parseExpr (Quit:ts) = [Quit]
-parseExpr junk = junkparser ("Invalid command") []
+parseExpr junk = junkparser ("Invalid command\n") []
 
 --load
 fnameparser usage [(Quotedstr str)] = [(Quotedstr str)]
@@ -64,32 +64,25 @@ datefixparser junk = junkparser "usage: date-fix <column> <date>" junk
 
 --gridfix
 gridfixparser :: [Token] -> [Token] 
-gridfixparser tok@[(Ident str),(Ident ne)] 	| isGridRef ne = [(Ident str),(Gridref ne)]
-											| otherwise = junkparser "usage: <column> <grid ref>" tok
+gridfixparser tok@[(Ident str),(Const 4.0)] 	= tok
+gridfixparser tok@[(Quotedstr str),(Const 4.0)] = [(Ident str),(Const 4.0)]
+gridfixparser tok@[(Ident str),(Const 6.0)] 	= tok
+gridfixparser tok@[(Quotedstr str),(Const 6.0)] = [(Ident str),(Const 6.0)]											
 
-gridfixparser tok@[(Quotedstr str),(Ident ne)] 
-											| isGridRef ne = [(Ident str),(Gridref ne)]
-											| otherwise = junkparser "usage: <column> <grid ref>" tok
+gridfixparser junk = junkparser "usage: grid-fix <column> <4|6>" junk
 
-gridfixparser junk = junkparser "usage: grid-fix <column> <grid ref>" junk
 
-isGridRef  (c:cs) | isAlpha c = isGridRef' cs
-			      | otherwise = False
 
-isGridRef _ = False
-isGridRef' (d1:d2:d3:d4:d5:d6:ds) | isDigit d1 && isDigit d2 && isDigit d3 && isDigit d4 && isDigit d5 && isDigit d6 = True
-								  | otherwise = False
-isGridRef' _ = False
 
 --reformat 
 reformatparser toks@[(Ident str),Uppercase] = toks
 reformatparser toks@[(Ident str),Capitalize] = toks
 reformatparser toks@[(Ident str),Lowercase] = toks
 reformatparser toks@[(Ident str),Trim] = toks
-reformatparser toks@[(Quotedstr str),Uppercase] = toks
-reformatparser toks@[(Quotedstr str),Capitalize] = toks
-reformatparser toks@[(Quotedstr str),Lowercase] = toks
-reformatparser toks@[(Quotedstr str),Trim] = toks
+reformatparser toks@[(Quotedstr str),Uppercase] = [(Ident str),Uppercase]
+reformatparser toks@[(Quotedstr str),Capitalize] =[(Ident str),Capitalize]
+reformatparser toks@[(Quotedstr str),Lowercase] = [(Ident str),Lowercase] 
+reformatparser toks@[(Quotedstr str),Trim] = [(Ident str),Trim]
 
 reformatparser junk = junkparser "usage: reformat <uppercase | capitalize | lowercase | trim>" junk
 
@@ -97,9 +90,9 @@ reformatparser junk = junkparser "usage: reformat <uppercase | capitalize | lowe
 sortparser :: [Token] -> [Token]
 sortparser [] = []
 sortparser ((Ident str):Ascending:ts) =  sortparser ts ++ [(Ident str),Ascending]
-sortparser ((Ident str):Descending:ts) = sortparser ts ++ [(Ident str),Ascending]
+sortparser ((Ident str):Descending:ts) = sortparser ts ++ [(Ident str),Descending]
 sortparser ((Quotedstr str):Ascending:ts) = sortparser ts ++ [(Ident str),Ascending]
-sortparser ((Quotedstr str):Descending:ts) = sortparser ts ++ [(Ident str),Ascending]
+sortparser ((Quotedstr str):Descending:ts) = sortparser ts ++ [(Ident str),Descending]
 sortparser junk = junkparser "usage: sort <column> <ascending | descending>" junk
 
 --select

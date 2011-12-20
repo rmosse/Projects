@@ -55,6 +55,32 @@ scan' ('t':'r':'i':'m':cs) = Trim: scan cs
 scan' ('a':'s':'c':'e':'n':'d':'i':'n':'g':cs) = Ascending: scan cs
 scan' ('d':'e':'s':'c':'e':'n':'d':'i':'n':'g':cs) = Descending: scan cs
 
+scan' date@('d':'d':'m':'m':'y':'y':'y':'y':cs) = Date date: scan cs
+scan' date@('d':'d':'y':'y':'y':'y':'m':'m':cs) = Date date: scan cs
+scan' date@('m':'m':'d':'d':'y':'y':'y':'y':cs) = Date date: scan cs
+scan' date@('m':'m':'y':'y':'y':'y':'d':'d':cs) = Date date: scan cs
+scan' date@('y':'y':'y':'y':'m':'m':'d':'d':cs) = Date date: scan cs
+scan' date@('y':'y':'y':'y':'d':'d':'m':'m':cs) = Date date: scan cs
+scan' date@('D':'D':'M':'M':'Y':'Y':'Y':'Y':cs) = Date date: scan cs
+scan' date@('D':'D':'Y':'Y':'Y':'Y':'M':'M':cs) = Date date: scan cs
+scan' date@('M':'M':'D':'D':'Y':'Y':'Y':'Y':cs) = Date date: scan cs
+scan' date@('M':'M':'Y':'Y':'Y':'Y':'D':'D':cs) = Date date: scan cs
+scan' date@('Y':'Y':'Y':'Y':'M':'M':'D':'D':cs) = Date date: scan cs
+scan' date@('Y':'Y':'Y':'Y':'D':'D':'M':'M':cs) = Date date: scan cs
+scan' date@('d':'d':'-':'m':'m':'-':'y':'y':'y':'y':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('d':'d':'-':'y':'y':'y':'y':'-':'m':'m':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('m':'m':'-':'d':'d':'-':'y':'y':'y':'y':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('m':'m':'-':'y':'y':'y':'y':'-':'d':'d':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('y':'y':'y':'y':'-':'m':'m':'-':'d':'d':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('y':'y':'y':'y':'-':'d':'d':'-':'m':'m':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('D':'D':'-':'M':'M':'-':'Y':'Y':'Y':'Y':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('D':'D':'-':'Y':'Y':'Y':'Y':'-':'M':'M':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('M':'M':'-':'D':'D':'-':'Y':'Y':'Y':'Y':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('M':'M':'-':'Y':'Y':'Y':'Y':'-':'D':'D':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('Y':'Y':'Y':'Y':'-':'M':'M':'-':'D':'D':cs) = (Date (stripdash [] date)): scan cs
+scan' date@('Y':'Y':'Y':'Y':'-':'D':'D':'-':'M':'M':cs) = (Date (stripdash [] date)): scan cs
+
+
 --conditions
 scan' ('<':'=':cs) = Condition "<=": scan cs
 scan' ('=':'>':cs) = Condition "=>": scan cs  
@@ -69,6 +95,11 @@ scan' (c:cs)
  | isDigit c  =  floatlexer [c] cs
 
 scan' jnk = junklexer [] jnk
+
+--removes '-' from a string
+stripdash buffer [] = buffer
+stripdash buffer (c:cs) | c == '-' = stripdash buffer cs
+						| otherwise = stripdash (buffer++[c]) cs
 
 columnnumlexer sofar "" = [Quotedstr (reverse sofar)]
 columnnumlexer sofar str@(c:cs)
@@ -104,18 +135,10 @@ alphalexer sofar str@(c:cs)
  | otherwise  =  (Ident (reverse sofar)) : scan str
  
 
-datelexer sofar "" = [Date (reverse sofar)]
-datelexer sofar str@(c:cs)
- | isDigit c  =  datelexer (c:sofar) cs
- | c == '/'   =  datelexer (c:sofar) cs
- | otherwise  =  (Date (reverse sofar)) : scan str
- 
-
 floatlexer sofar "" = [Const (read (reverse sofar))]
 floatlexer sofar str@(c:cs)
  | isDigit c  =  floatlexer (c:sofar) cs
  | c == '.'   =  dotlexer (c:sofar) cs
- | c == '/'   =  datelexer (c:sofar) cs
  | otherwise  =  (Const (read (reverse sofar))) : scan str
 
 

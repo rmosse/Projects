@@ -1,6 +1,5 @@
 module Spread 
 	where
-
 import System.Exit
 import IO
 import Parser
@@ -11,15 +10,17 @@ import Data.Time.Calendar
 import Text.Regex.Posix
 import Date
 import Data.List
-
+import System.Console.Readline
+import Data.Maybe
+import Grid
+import Data.Char
 main = prompt [] (False, "console")
 
 prompt:: [[String]] -> (Bool, String) -> IO ()
 prompt sheet output =  do 
 	hSetBuffering stdin LineBuffering
-	putStr "$ "
-	cmd <- getLine
-	let cmd' = (Parser.parse cmd)
+	maybecmd <- readline "$ "
+	let cmd' = (Parser.parse (fromJust maybecmd))
 	case cmd' of
 		(tok:(Invalid str):ts)	-> invalid' sheet output str
 		(Newl:ts) -> prompt sheet output
@@ -28,6 +29,7 @@ prompt sheet output =  do
 		(Quit:ts) -> quit
 		(Show:ts) -> shower sheet output sheet 
 		tok 	  -> handle sheet output tok
+
 
 --IO Functions	
 --load
@@ -70,11 +72,12 @@ println output@(output', fname) (w:ws) = do
 					else
 						putStr (w ++"|")
 					println output ws				
-		
+
 --quit
 quit = do 
 			putStrLn "Good bye"
 		  	return ()
+
 --Invalid
 invalid' sheet output str= do 
 				putStrLn str
@@ -242,23 +245,80 @@ nooutput sheet output args = ("output redirected to console" , sheet, (False,"co
 help sheet output = ("help", sheet, output)
 
 --datefix
-datefix sheet output args = (datefix' sheet args, sheet, output)
-datefix' :: [[String]] -> [Token] -> String
+
+datefix sheet@(r:rs) output args = ("dates updated\n" , datefix' rs args, output)
+datefix [] output args = ("no file loaded\n",[],output)
+datefix' :: [[String]] -> [Token] -> [[String]] 
 datefix' [] _ = []
-datefix' (r:rs) args = (datefix'' r args) ++ (datefix' rs args) 
+datefix' (r:rs) args@[(Ident str),(Date format)] = (datefix'' r args ((read str)::Int)) : (datefix' rs args) 
 
-datefix'' :: [String] -> [Token] -> String
-datefix'' [] _ = []
-datefix'' (c:cs) args 	| isDate c =  c ++"\n"++ (datefix'' cs args)
-					 	| otherwise = datefix'' cs args
+datefix'' :: [String] -> [Token] -> Int -> [String]
+datefix'' [] _ _ = []
+datefix'' row [(Ident str),(Date format)] index | length row < index = []
+										  		| isDate (row !! index) =  (setIndex row index (Date.date_fix format (Date.toDate (row !! index))))
+										  		| (row !! index) == "" = ["0/0/0",[]]			
+									 	  		| otherwise = error ("Not a Date \"" ++ (row !! index) ++ "\"")
+setIndex row index value
+    | index < 0 = error "Bad index"
+    | otherwise = _setIndex row index value
+    where
+        _setIndex [] _ _ = error "Bad index"
+        _setIndex (_ : row) 0 value = value : row
+        _setIndex (x : xs) index value = x : (setIndex xs (index - 1) value)
 
-gridfix sheet output args = (show args, sheet, output)
 
-reformat sheet output args = (show args, sheet, output)
+--gridfix
+gridfix sheet@(r:rs) output args = ("Grid references updated\n", gridfix' rs args, output)
+gridfix [] output args = ("no file loaded\n",[],output)
+gridfix' :: [[String]] -> [Token] -> [[String]] 
+gridfix' [] _ = []
+gridfix' (r:rs) args@[(Ident str),(Const format)] = (gridfix'' r args ((read str)::Int)) : (gridfix' rs args) 
 
-sortf sheet output args = (show args, sheet, output)
+gridfix'' :: [String] -> [Token] -> Int -> [String]
+gridfix'' [] _ _ = []
+gridfix'' row [(Ident str),(Const format)] index | length row < index = []
+										  		| isGridref (row !! index) =  (setIndex row index (Grid.grid_fix (show format) (row !! index)))
+										  		| (row !! index) == "" = ["0/0/0",[]]			
+									 	  		| otherwise = ( error ("Not a Gridreference \"" ++ (row !! index) ++ "\""))
 
---sort' sheet (Descending:ts) =
+
+reformat sheet output [Ident num, Uppercase] = ("updated column: "++(show num)++"\n", upper ((read num)::Int) sheet, output)
+reformat sheet output [Ident num, Lowercase] = ("updated column: "++(show num)++"\n", lower ((read num)::Int) sheet, output)
+reformat sheet output [Ident num, Capitalize] = ("updated column: "++(show num)++"\n", caps ((read num)::Int) sheet, output)
+reformat sheet output [Ident num, Trim] =  ("updated column: "++(show num)++"\n",trimmer ((read num)::Int) sheet, output)
+
+
+upper:: Int -> [[String]] -> [[String]]
+upper _ [] = []
+upper num (r:rs) | length r > num = setIndex r num (map toUpper (r !! num)) : upper num rs 
+				 | otherwise = []
+
+
+lower :: Int -> [[String]] -> [[String]]
+lower _ [] = []
+lower num (r:rs) | length r > num = setIndex r num (map toLower (r !! num)) : lower num rs 
+				 | otherwise = []
+
+caps :: Int -> [[String]] -> [[String]]
+caps _ [] = []
+caps num (r:rs) | length r > num = setIndex r num value : caps num rs 
+				 | otherwise = []
+				where value | length (r !! num) > 0 = (setIndex (r !! num) 0 value')
+							| otherwise = (r !! num)						
+					where value' =  (toUpper ((r !! num) !! 0))
+								 	
+trimmer :: Int -> [[String]] -> [[String]]
+trimmer _ [] = []
+trimmer num (r:rs) 	| length r > num = setIndex r num (Date.trim (r !! num)) : trimmer num rs 
+				 	| otherwise = []
+
+sortf sheet output args = (show (sort' sheet args) , sort' sheet args, output)
+
+sort' sheet ((Ident column):Ascending:ts) = apply sheet ((read column)::Int) (sort (getcol (((read column)::Int)) sheet))
+sort' sheet ((Ident column):Descending:ts) = apply sheet ((read column)::Int) (reverse (sort (getcol (((read column)::Int)) sheet)))
+
+apply [] _ [] = []
+apply (r:rs) index (v:vs) = setIndex r index v : apply rs index vs
 
 select sheet output args = (show args, sheet, output)
 
