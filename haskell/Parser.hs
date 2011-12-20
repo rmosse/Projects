@@ -89,10 +89,10 @@ reformatparser junk = junkparser "usage: reformat <uppercase | capitalize | lowe
 --sort
 sortparser :: [Token] -> [Token]
 sortparser [] = []
-sortparser ((Ident str):Ascending:ts) =  sortparser ts ++ [(Ident str),Ascending]
-sortparser ((Ident str):Descending:ts) = sortparser ts ++ [(Ident str),Descending]
-sortparser ((Quotedstr str):Ascending:ts) = sortparser ts ++ [(Ident str),Ascending]
-sortparser ((Quotedstr str):Descending:ts) = sortparser ts ++ [(Ident str),Descending]
+sortparser ((Ident str):Ascending:ts) = [(Ident str),Ascending] ++ sortparser ts
+sortparser ((Ident str):Descending:ts) = [(Ident str),Descending] ++ sortparser ts
+sortparser ((Quotedstr str):Ascending:ts) = [(Ident str),Ascending] ++ sortparser ts
+sortparser ((Quotedstr str):Descending:ts) = [(Ident str),Descending] ++ sortparser ts
 sortparser junk = junkparser "usage: sort <column> <ascending | descending>" junk
 
 --select

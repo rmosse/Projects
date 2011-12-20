@@ -14,6 +14,7 @@ import System.Console.Readline
 import Data.Maybe
 import Grid
 import Data.Char
+import Mysort
 main = prompt [] (False, "console")
 
 prompt:: [[String]] -> (Bool, String) -> IO ()
@@ -314,11 +315,13 @@ trimmer num (r:rs) 	| length r > num = setIndex r num (Date.trim (r !! num)) : t
 
 sortf sheet output args = (show (sort' sheet args) , sort' sheet args, output)
 
-sort' sheet ((Ident column):Ascending:ts) = apply sheet ((read column)::Int) (sort (getcol (((read column)::Int)) sheet))
-sort' sheet ((Ident column):Descending:ts) = apply sheet ((read column)::Int) (reverse (sort (getcol (((read column)::Int)) sheet)))
+sort' sheet args = let (columns,orders) =  unzip (mysplit args) in mysort sheet columns orders
 
-apply [] _ [] = []
-apply (r:rs) index (v:vs) = setIndex r index v : apply rs index vs
+mysplit  [] = []
+mysplit  ((Ident column):Ascending:ts) = (((read column)::Int),Ascending): mysplit ts
+mysplit  ((Ident column):Descending:ts) = (((read column)::Int),Descending): mysplit ts
+
+
 
 select sheet output args = (show args, sheet, output)
 

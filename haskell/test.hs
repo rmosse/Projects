@@ -1,10 +1,8 @@
 module Test
 	where
-import Data.Char
+import Data.List
+import Lexer
 
-mysort':: [[String]] -> Int -> [[String]]
-mysort [] _ = []
-mysort' (r:rs) index =  mysort' lesser index ++ [r] ++ mysort' greater index
- 					where
-						lesser = filter (< (r !! index)) rs 
-						greater = filter (>= (r !! index)) rs			
+mysplit  [] = []
+mysplit  ((Ident column):Ascending:ts) = ((Ident column),Ascending): mysplit ts
+mysplit  ((Ident column):Descending:ts) = ((Ident column),Descending): mysplit ts
