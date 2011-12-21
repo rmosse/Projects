@@ -68,11 +68,7 @@ gridfixparser tok@[(Ident str),(Const 4.0)] 	= tok
 gridfixparser tok@[(Quotedstr str),(Const 4.0)] = [(Ident str),(Const 4.0)]
 gridfixparser tok@[(Ident str),(Const 6.0)] 	= tok
 gridfixparser tok@[(Quotedstr str),(Const 6.0)] = [(Ident str),(Const 6.0)]											
-
 gridfixparser junk = junkparser "usage: grid-fix <column> <4|6>" junk
-
-
-
 
 --reformat 
 reformatparser toks@[(Ident str),Uppercase] = toks
@@ -83,7 +79,6 @@ reformatparser toks@[(Quotedstr str),Uppercase] = [(Ident str),Uppercase]
 reformatparser toks@[(Quotedstr str),Capitalize] =[(Ident str),Capitalize]
 reformatparser toks@[(Quotedstr str),Lowercase] = [(Ident str),Lowercase] 
 reformatparser toks@[(Quotedstr str),Trim] = [(Ident str),Trim]
-
 reformatparser junk = junkparser "usage: reformat <uppercase | capitalize | lowercase | trim>" junk
 
 --sort
@@ -102,10 +97,9 @@ selectparser toks = condparser "select ...<condition>...\n condition: <column><c
 
 --update
 updateparser :: [Token] -> [Token]
-updateparser toks@((Const num):(Quotedstr str):val:[])  = toks
+updateparser toks@((Const num):(Quotedstr str):val:[])  = ((Const num):(Ident str):val:[])
 updateparser toks@((Const num):(Ident str):val:[])  = toks
 updateparser junk = junkparser "usage: update <row number> <column> <new value>" junk
-
 
 --delete 
 deleteparser tok@(Const val:[]) = tok

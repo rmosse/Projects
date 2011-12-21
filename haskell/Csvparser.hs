@@ -3,7 +3,7 @@ module Csvparser
 
 import Data.List.Split
 
-parse file = map del (mylines file)
+parse file = init (map del (mylines file))
 	where del line = delimit [] line 
 
 mylines string = splitOn "\r" string

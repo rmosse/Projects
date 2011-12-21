@@ -1,5 +1,3 @@
-module Spread 
-	where
 import System.Exit
 import IO
 import Parser
@@ -15,6 +13,7 @@ import Data.Maybe
 import Grid
 import Data.Char
 import Mysort
+
 main = prompt [] (False, "console")
 
 prompt:: [[String]] -> (Bool, String) -> IO ()
@@ -29,6 +28,7 @@ prompt sheet output =  do
 		(Save:ts) -> save ts sheet output
 		(Quit:ts) -> quit
 		(Show:ts) -> shower sheet output sheet 
+		(Insert:ts)	-> myinsert sheet ts output
 		tok 	  -> handle sheet output tok
 
 
@@ -86,6 +86,65 @@ invalid' sheet output str= do
 				return ()
 
 
+--Insert
+
+myinsert sheet@(r:rs) args output  = myinsert' sheet args (length $ trimend r) output
+myinsert' sheet args len output	| checkinput (myinsert'' sheet args) len == (True, len) = inputOK (unzip (myinsert'' sheet args)) sheet output
+								| otherwise =  promptinput ( checkinput (myinsert'' sheet args) len) args sheet output
+myinsert'' sheet [] = []
+myinsert'' sheet ((ConditionStr num cond str):ts) = sorter ([(((read num)::Int), str)] ++ (myinsert'' sheet ts))
+myinsert'' sheet junk = [(-1, show junk)]
+
+checkinput:: [(Int,String)] -> Int -> (Bool,Int)
+checkinput vals len = checkinput' 0 vals len
+checkinput' index ((num,val):ts) len	| num == index = checkinput' (index+1) ts len	 
+										| num /= index = (False, index)
+										| len == index = (True, index)
+checkinput' index [] len 	| index > len = (False, -1)
+							| len == index = (True, index)
+							| otherwise = (False, index)
+
+
+promptinput::(Bool,Int) -> [Token] -> [[String]] -> (Bool, String) -> IO ()
+promptinput (tval, index) args sheet output | index == -1 = do
+											putStrLn "you entered to many values, changes disgarded"
+											prompt sheet output
+											return ()
+									  		| otherwise =   do
+											putStr ("please enter a value for column "++ show index++": ")
+											val <- getLine
+											myinsert sheet (args++[ConditionStr (show index) "=" val]) output
+																	
+inputOK::([Int],[String]) -> [[String]] -> (Bool, String) -> IO ()
+inputOK (inds, vals) sheet@(r:rs) output = do 
+								  let vals' = untrim vals (length r)
+								  putStrLn "1 new row added"
+								  let x = sheet ++ [vals']
+								  prompt x output	
+								  return ()		
+
+
+
+trimend line = trimend' (reverse line)
+trimend' line@(x:xs) 	| x == "" = trimend' xs
+						| otherwise = reverse line
+untrim::[String] -> Int -> [String]
+untrim vals len = vals ++ (untrim' (length vals) len)
+untrim'::Int-> Int -> [String]
+untrim' index len | index == len = []
+				  | otherwise = "" : untrim' (index+1) len
+
+
+sorter::[(Int, String)] -> [(Int,String)]
+sorter vals  = sortBy order vals
+						where 
+							order (inda, vala) (indb, valb)
+								| inda > indb = GT
+								| inda < indb = LT
+								| inda == indb = error ("multiple declarations for column " ++ (show inda))
+
+
+
 --processes non IO functions
 handle sheet output toks = do
 						let (msg, sheet', (output',fname)) = (process sheet (date) output toks)
@@ -116,7 +175,6 @@ process sheet date output toks =  case toks of
 							(Select:ts) 			-> select sheet output ts
 							(Update:ts)				-> update sheet output ts
 							(Delete:ts) 			-> deletef sheet output ts
-							(Insert:ts)				-> insertf sheet output ts
 							junk					-> (("invalid") , sheet , output)
 
 --Regular Functions
@@ -303,7 +361,7 @@ lower num (r:rs) | length r > num = setIndex r num (map toLower (r !! num)) : lo
 caps :: Int -> [[String]] -> [[String]]
 caps _ [] = []
 caps num (r:rs) | length r > num = setIndex r num value : caps num rs 
-				 | otherwise = []
+				| otherwise = []
 				where value | length (r !! num) > 0 = (setIndex (r !! num) 0 value')
 							| otherwise = (r !! num)						
 					where value' =  (toUpper ((r !! num) !! 0))
@@ -313,7 +371,7 @@ trimmer _ [] = []
 trimmer num (r:rs) 	| length r > num = setIndex r num (Date.trim (r !! num)) : trimmer num rs 
 				 	| otherwise = []
 
-sortf sheet output args = (show (sort' sheet args) , sort' sheet args, output)
+sortf sheet output args = ("sorted\n" , sort' sheet args, output)
 
 sort' sheet args = let (columns,orders) =  unzip (mysplit args) in mysort sheet columns orders
 
@@ -322,13 +380,25 @@ mysplit  ((Ident column):Ascending:ts) = (((read column)::Int),Ascending): myspl
 mysplit  ((Ident column):Descending:ts) = (((read column)::Int),Descending): mysplit ts
 
 
-
 select sheet output args = (show args, sheet, output)
 
-update sheet output args = (show args, sheet, output)
+update sheet output args@((Const r):c:cs) = ("row "++(show (floor r))++" updated\n", update' sheet args, output)
+update' sheet ((Const num):(Ident str):(Ident val):[]) = setIndex sheet (floor num) (setIndex (sheet !! (floor num)) ((read str)::Int) val)
 
-deletef sheet output args = (show args, sheet, output)
 
-insertf sheet output args = (show args, sheet, output)
+
+
+deletef sheet output (Const val:[]) = ("row "++(show (floor val))++" deleted\n", delete' sheet (floor val) , output)
+
+
+
+delete' sheet val = delete'' 0 sheet val 
+delete'' _ [] _ = []
+delete'' index (r:rs) val | val == index = delete'' (index+1) rs val
+						  | otherwise = r : delete'' (index+1) rs val
+
+
+
+
 
 junker sheet output args =(show args, sheet, output)
