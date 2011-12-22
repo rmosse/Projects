@@ -41,7 +41,8 @@ scan' ('u':'p':'d':'a':'t':'e':cs) = Update: scan cs
 scan' ('d':'e':'l':'e':'t':'e':cs) = Delete: scan cs
 scan' ('i':'n':'s':'e':'r':'t':cs) = Insert: scan cs
 scan' ('h':'e':'l':'p':cs) = Help: scan cs
-scan' ('h':[]) = [Help]
+scan' ('?':cs) = Help: scan cs
+scan' ('h':cs) = Help: scan cs
 scan' ('q':'u':'i':'t':cs) = Quit: scan cs
 scan' ('q':[]) = [Quit]
 --args

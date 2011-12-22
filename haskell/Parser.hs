@@ -5,7 +5,7 @@ module Parser
 import Lexer
 import Data.Char
 
-parse cmd = parseExpr (Lexer.scan cmd)
+parse cmd = parseExpr (Lexer.scan cmd) 
 
 parseExpr:: [Token] -> [Token]
 parseExpr [] = [Newl]
@@ -17,7 +17,7 @@ parseExpr (List:ts) = List : (condparser "List ...<condition>...\n condition: <c
 parseExpr (Distinct:ts) = Distinct: distinctparser ts
 parseExpr (Set:Output:ts) = Output: fnameparser "usage: set output <filename>" ts
 parseExpr [NoOutput] = [NoOutput]
-parseExpr [Show] = [Show]
+parseExpr (Show:ts) = [Show]
 parseExpr (DateFix:ts) = DateFix: datefixparser ts 	
 parseExpr (GridFix:ts) = GridFix: gridfixparser ts
 parseExpr (Reformat:ts) = Reformat: reformatparser ts
@@ -26,7 +26,7 @@ parseExpr (Select:ts) = Select: selectparser ts
 parseExpr (Update:ts) = Update: updateparser ts
 parseExpr (Delete:ts) = Delete: deleteparser ts
 parseExpr (Insert:ts) = Insert: insertparser ts
-parseExpr (Help:ts) = [Help]
+parseExpr (Help:ts) = Help : ts
 parseExpr (Quit:ts) = [Quit]
 parseExpr junk = junkparser ("Invalid command\n") []
 
@@ -52,7 +52,7 @@ condparser tipe sofar [] = sofar
 condparser tipe sofar junk = junkparser ("usage: "++tipe) junk
 
 --distinct
-distinctparser tok@[Ident str] = tok
+distinctparser tok@[Ident str] = [Quotedstr str]
 distinctparser tok@[Quotedstr str] = tok
 distinctparser junk = junkparser "usage: distinct  <column><condition><glob string> " junk
 
@@ -97,8 +97,10 @@ selectparser toks = condparser "select ...<condition>...\n condition: <column><c
 
 --update
 updateparser :: [Token] -> [Token]
-updateparser toks@((Const num):(Quotedstr str):val:[])  = ((Const num):(Ident str):val:[])
-updateparser toks@((Const num):(Ident str):val:[])  = toks
+updateparser toks@((Const num):(Quotedstr str):(Quotedstr val):[])  = ((Const num):(Ident str):(Quotedstr val):[])
+updateparser toks@((Const num):(Ident str):(Quotedstr val):[])  = toks
+updateparser toks@((Const num):(Quotedstr str):(Ident val):[])  = ((Const num):(Ident str):(Quotedstr val):[])
+updateparser toks@((Const num):(Ident str):(Ident val):[])  = ((Const num):(Ident str):(Quotedstr val):[])
 updateparser junk = junkparser "usage: update <row number> <column> <new value>" junk
 
 --delete 
@@ -113,3 +115,5 @@ insertparser junk = junkparser "usage insert ...<column=\"value\">..." junk
 --junk
 junkparser:: String -> [Token] -> [Token]
 junkparser msg junk  = [Invalid msg]
+
+
